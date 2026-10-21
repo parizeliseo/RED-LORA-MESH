@@ -481,7 +481,7 @@ const hostsOf = (txt) => {
   }
   return [...out];
 };
-/* /24 de una dirección: 192.168.77.25 -> 192.168.77 */
+/* /24 de una dirección: 192.168.1.25 -> 192.168.1 */
 const red24 = (t) => { const m = String(t).trim().match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/); return m && ok255(m[1].split(".")) ? m[1] : null; };
 /* Dos pasadas. La primera barre toda la red rápido; la segunda confirma solo los candidatos,
    con paciencia. Así un nodo lento ya no se pierde y el barrido entero no tarda minutos. */

@@ -1,0 +1,12 @@
+# dependencias y resultados de compilación
+node_modules/
+portal/dist/
+android/app/out/
+__pycache__/
+*.pyc
+
+# NUNCA subir: clave de firma de la aplicación
+*.jks
+*.keystore
+*clave-firma*
+clave.txt

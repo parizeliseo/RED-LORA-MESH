@@ -1,0 +1,22 @@
+{
+  "name": "meshportal",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.16.0",
+    "@meshtastic/core": "^2.6.7",
+    "@meshtastic/transport-http": "^0.2.5",
+    "@meshtastic/transport-web-bluetooth": "^0.1.5",
+    "@meshtastic/transport-web-serial": "^0.2.5",
+    "esbuild": "^0.28.2",
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^1.4.4"
+  }
+}

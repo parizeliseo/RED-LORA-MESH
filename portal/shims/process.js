@@ -1,0 +1,1 @@
+export const process = { env: {}, versions: {}, platform: "browser", argv: [], cwd: () => "/", nextTick: (f, ...a) => queueMicrotask(() => f(...a)), stdout: { isTTY: false }, stderr: { isTTY: false } };

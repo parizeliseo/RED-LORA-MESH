@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Silicon Labs CP210x (Heltec V3, T-Beam, Station G1) -->
+    <usb-device vendor-id="4292"/>
+    <!-- WCH CH340 / CH341 / CH9102 -->
+    <usb-device vendor-id="6790"/>
+    <!-- Espressif ESP32-S2/S3 USB nativo -->
+    <usb-device vendor-id="12346"/>
+    <!-- Adafruit / nRF52 (RAK4631, T-Echo) -->
+    <usb-device vendor-id="9114"/>
+    <!-- Raspberry Pi RP2040 -->
+    <usb-device vendor-id="11914"/>
+    <!-- Nordic Semiconductor -->
+    <usb-device vendor-id="6421"/>
+</resources>

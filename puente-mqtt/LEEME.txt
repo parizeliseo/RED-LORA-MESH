@@ -1,0 +1,16 @@
+PUENTE MQTT - OPEN SOURCE PARIZ
+================================
+Deja todos estos archivos en UNA misma carpeta (por ejemplo C:\PuenteMQTT) y no la muevas.
+
+BOTON "INICIAR PUENTE" DEL PORTAL (recomendado, Windows):
+  1) Instala Python desde python.org (marca "Add Python to PATH").
+  2) Doble clic en instalar-boton-puente.bat (una sola vez, sin permisos de administrador).
+  3) En el portal toca "Iniciar puente". Si el navegador pregunta si abre
+     "Puente OPEN SOURCE PARIZ", toca Abrir (puedes marcar "permitir siempre").
+  - detener-puente.bat cierra el puente (se abre sin ventana).
+  - desinstalar-boton-puente.bat quita el boton del registro de Windows.
+
+SIN INSTALAR NADA:
+  Doble clic en iniciar-puente.bat y deja esa ventana abierta. El boton del portal se pone verde solo.
+
+El puente escucha solo en tu PC (127.0.0.1:9001) y atiende a todos los servidores a la vez.

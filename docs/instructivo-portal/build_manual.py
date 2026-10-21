@@ -5,7 +5,9 @@ from playwright.async_api import async_playwright
 from content import CH
 FIG_N = [0]
 def img64(name):
-    im = Image.open(f"img/{name}.png").convert("RGB")
+    import os
+    ruta = next(f"img/{name}{e}" for e in (".png", ".jpg") if os.path.exists(f"img/{name}{e}"))
+    im = Image.open(ruta).convert("RGB")
     b = io.BytesIO(); im.save(b, "JPEG", quality=84, optimize=True)
     return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
 def render_block(bl):

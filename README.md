@@ -25,6 +25,8 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 **En la computadora:** descargá el `.html`, abrilo con **Chrome, Edge, Brave u Opera**
 (Firefox y Safari no permiten USB ni Bluetooth desde el navegador) y conectá el nodo.
 
+Qué cambió en cada versión: [`CHANGELOG.md`](CHANGELOG.md).
+
 **En el celular:** descargá el `.apk`, abrilo desde *Archivos* y permití la instalación desde
 esta fuente. No está en Google Play.
 

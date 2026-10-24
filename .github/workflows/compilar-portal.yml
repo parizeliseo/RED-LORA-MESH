@@ -1,0 +1,48 @@
+# Comprueba que el portal compile y que el archivo resultante sea un portal válido.
+# No publica nada: solo avisa si un cambio rompió la compilación.
+name: Compilar el portal
+
+on:
+  push:
+    branches: [main]
+    paths: ["portal/**", ".github/workflows/compilar-portal.yml"]
+  pull_request:
+    paths: ["portal/**"]
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias
+        working-directory: portal
+        run: npm ci || npm install
+
+      - name: Compilar
+        working-directory: portal
+        run: node build.mjs
+
+      - name: Revisar el resultado
+        working-directory: portal
+        run: |
+          set -e
+          ARCHIVO=dist/portal-meshtastic.html
+          test -f "$ARCHIVO" || { echo "No se generó $ARCHIVO"; exit 1; }
+          KB=$(( $(stat -c%s "$ARCHIVO") / 1024 ))
+          echo "Tamaño: ${KB} KB"
+          [ "$KB" -gt 300 ] || { echo "El archivo quedó demasiado chico: algo no se incluyó"; exit 1; }
+          grep -q "Sistema LoRa Mesh" "$ARCHIVO" || { echo "Falta el título del portal"; exit 1; }
+          echo "El portal compiló bien."
+
+      - name: Guardar el portal compilado
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-lora-mesh
+          path: portal/dist/portal-meshtastic.html
+          retention-days: 14

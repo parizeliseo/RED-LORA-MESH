@@ -137,9 +137,26 @@ const maskName = (t) => (t || "").replace(/meshtastic/gi, "LoRa Mesh");
 const nodeName = (n) => (n && n.user && n.user.longName) || "LoRa Mesh " + (n ? hex8(n.num).slice(-4) : "????");
 const nodeShort = (n) => (n && n.user && n.user.shortName) || (n ? hex8(n.num).slice(-4) : "????");
 const nameOf = (num) => nodeName(S.nodes.get(num) || { num });
+/* El color del avatar sale del número del nodo, pero no todos los tonos admiten letras blancas:
+   un amarillo claro con texto blanco no se lee. Se baja la luminosidad del tono lo justo para que
+   el texto alcance el contraste que pide la norma, así todos los avatares pesan parecido a la vista. */
+const _lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+function hslLum(h, s, l) {
+  const k = (m) => (m + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (m) => l - a * Math.max(-1, Math.min(k(m) - 3, 9 - k(m), 1));
+  return 0.2126 * _lin(f(0)) + 0.7152 * _lin(f(8)) + 0.0722 * _lin(f(4));
+}
+const avBg = new Map();
+function avatarBg(h) {
+  if (avBg.has(h)) return avBg.get(h);
+  let lo = 0.12, hi = 0.52;
+  for (let i = 0; i < 12; i++) { const m = (lo + hi) / 2; if (1.05 / (hslLum(h, 0.55, m) + 0.05) >= 4.6) lo = m; else hi = m; }
+  const v = `hsl(${h} 55% ${Math.round(lo * 100)}%)`;
+  avBg.set(h, v); return v;
+}
 function avatar(n, size = 38) {
   const h = (n.num * 47) % 360;
-  return el("div", { class: "avatar", style: `width:${size}px;height:${size}px;background:hsl(${h} 55% 42%);font-size:${size > 34 ? 11 : 9}px` }, nodeShort(n).slice(0, 4));
+  return el("div", { class: "avatar", style: `width:${size}px;height:${size}px;background:${avatarBg(h)};font-size:${size > 34 ? 11 : 9}px` }, nodeShort(n).slice(0, 4));
 }
 const mePos = () => { const n = S.nodes.get(S.me); return n && n.pos ? n.pos : null; };
 function battText(b) {
@@ -317,7 +334,6 @@ const CONN_KEY = "meshportal:conns";
 const loadConns = () => { try { return JSON.parse(localStorage.getItem(CONN_KEY) || "[]"); } catch (e) { return []; } };
 const saveConns = (a) => { try { localStorage.setItem(CONN_KEY, JSON.stringify(a)); } catch (e) {} };
 const CONN_NAME = { serial: "USB", bluetooth: "Bluetooth", http: "Red (WiFi / LAN)" };
-const connWhere = (c) => c ? (c.type === "http" ? "Red: " + c.address : c.type === "bluetooth" ? "Bluetooth" + (c.name ? ": " + c.name : "") : "USB") : "";
 const connShort = (c) => (c ? { serial: "USB", bluetooth: "Bluetooth", http: "WiFi" }[c.type] : "USB");
 function rememberConn(c) {
   const a = loadConns(), key = c.type + "|" + (c.address || c.deviceId || "");
@@ -712,6 +728,7 @@ async function dispatch(job) {
     if (!S.device || !ready()) throw new Error("sin conexión con el nodo");
     const id = await S.device.sendText(job.text, job.dest, job.dest !== "broadcast", job.ch, job.replyTo || undefined, job.emoji || undefined);
     S.okIds.add(id); setMsgState(id, "ok");
+    if (S.okIds.size > 500) { const it = S.okIds.values(); for (let k = 0; k < 250; k++) S.okIds.delete(it.next().value); } /* solo sirve para casar la confirmación con el mensaje recién enviado: no hace falta guardar el historial entero */
   } catch (e) {
     onSendFail(job, e && e.id, e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : String((e && e.message) || e));
   }
@@ -800,7 +817,7 @@ function openSchedDialog() {
     } else if (mode === "group") {
       const chans = activeChans();
       const op = (v, t) => el("option", { value: v, selected: conv === v }, t);
-      const g = el("select", { class: "inp", onchange: () => { conv = g.value; sel.lastChild.textContent = convTitle(conv); } }, ...chans.map((i) => op("ch" + i, "# " + chName(i))), chans.length > 1 ? op("all", "Todos los grupos (" + chans.length + ")") : null);
+      const g = el("select", { class: "inp", "aria-label": "Destino del mensaje programado", onchange: () => { conv = g.value; sel.lastChild.textContent = convTitle(conv); } }, ...chans.map((i) => op("ch" + i, "# " + chName(i))), chans.length > 1 ? op("all", "Todos los grupos (" + chans.length + ")") : null);
       body = chans.length ? el("div", {}, g, el("small", { class: "muted" }, "El mismo mensaje sale por el grupo elegido; con “Todos los grupos” sale por cada canal cargado.")) : el("div", { class: "muted pad" }, "Todavía no hay grupos cargados: conectá el nodo");
     }
     destBox.replaceChildren(seg, sel, ...(body ? [body] : []));
@@ -855,7 +872,7 @@ function emFields(o, onChange) { /* controles compartidos por el cuadro de alert
     phone: el("input", { class: "inp", value: o.phone, placeholder: "Opcional: +54 9 11 1234-5678", autocomplete: "off", inputmode: "tel" }),
     country: el("input", { class: "inp", value: o.country, placeholder: "Opcional: país de la emergencia", autocomplete: "off", list: "emcountries" }),
     freqOn: el("label", { class: "sw" }, el("input", { type: "checkbox", checked: !!o.freqOn }), el("span", {})),
-    band: el("select", { class: "inp", style: "width:90px" }, ...["VHF", "UHF"].map((b) => el("option", { value: b, selected: o.band === b }, b))),
+    band: el("select", { class: "inp", style: "width:90px", "aria-label": "Banda de la frecuencia" }, ...["VHF", "UHF"].map((b) => el("option", { value: b, selected: o.band === b }, b))),
     freq: el("input", { class: "inp", value: o.freq, placeholder: "146.520", inputmode: "decimal", style: "width:110px", autocomplete: "off" }),
     coords: el("label", { class: "sw" }, el("input", { type: "checkbox", checked: !!o.coords }), el("span", {})),
   };
@@ -976,7 +993,6 @@ function playEvent(kind, force, ch) {
   if (e.tone === "custom") { playFile(kind, c.vol).then((ok) => { if (!ok) playSynth(SND_DEF.ev[kind].tone, c.vol); }); return; }
   playSynth(e.tone, c.vol);
 }
-const playTone = (kind, force) => playEvent(kind === "dm" || kind === "ch" ? kind : kind, force);
 function notifyIncoming(msg) { /* mensaje recibido: favorito > directo > canal */
   const n = S.nodes.get(msg.from), c = sndCfg();
   if (n && isFav(n) && c.ev.fav.on && !(msg.dm === false && c.mutedCh.includes(msg.ch))) return playEvent("fav", false);
@@ -1216,11 +1232,37 @@ function fillRight() {
 function openDM(num) { S.conv = "dm" + num; S.unread[S.conv] = 0; setView("messages"); }
 
 /* ───────────────────────── vistas principales ───────────────────────── */
+/* ── accesibilidad ──────────────────────────────────────────────────────────
+   Muchos controles del portal son interruptores y cuadros sin etiqueta propia: el texto que
+   los explica está al lado, en el título de la fila. Para el ojo alcanza, pero un lector de
+   pantalla los anuncia como "casilla, sin etiqueta". Este barrido les pone ese título como
+   nombre accesible, y le da acceso por teclado a las zonas que se desplazan. */
+function a11ySweep(root) {
+  if (!root) return;
+  for (const fila of root.querySelectorAll(".row")) {
+    const t = fila.querySelector(".rl b"); if (!t) continue;
+    const base = (t.textContent || "").trim(); if (!base) continue;
+    for (const c of fila.querySelectorAll(".rv input, .rv select, .rv textarea")) {
+      if (c.type === "hidden" || c.getAttribute("aria-label") || c.getAttribute("aria-labelledby")) continue;
+      const propia = c.closest("label");
+      if (propia && propia.textContent.trim()) continue; /* ya la nombra su propia etiqueta */
+      const antes = c.previousElementSibling, desp = c.nextElementSibling;
+      const matiz = (antes && antes.classList.contains("unit") && antes.textContent.trim())
+        || (desp && desp.classList.contains("unit") && desp.textContent.trim()) || "";
+      c.setAttribute("aria-label", matiz ? base + " · " + matiz : base);
+    }
+  }
+  /* zonas con barra de desplazamiento: sin esto no se pueden recorrer con el teclado */
+  for (const z of root.querySelectorAll(".tblwrap, .tblwrap2, .scanres, .msglist, .logbox")) {
+    if (!z.hasAttribute("tabindex")) { z.tabIndex = 0; if (!z.getAttribute("role")) z.setAttribute("role", "region"); }
+  }
+}
 function renderMain() {
   const m = $("#main"); m.replaceChildren(); S.form = isCfgView() ? null : S.form;
   if (!connected() && !(S.view === "settings" && (S.sub === "portal.net" || S.sub === "portal.snd" || S.sub === "portal.ops" || S.sub === "portal.perf" || S.sub === "portal.gps")) && S.view !== "emerg" && S.view !== "guardia" && S.view !== "topo") return m.append(connectScreen());
   if (S.status === ST.DeviceConfiguring || S.status === ST.DeviceConnecting) m.append(el("div", { class: "banner" }, "Descargando la configuración del nodo… puede tardar unos segundos con muchos nodos."));
   ({ messages: viewMessages, nodes: viewNodes, tele: viewTele, map: viewMap, settings: viewSettings, radio: viewSettings, device: viewSettings, module: viewSettings, console: viewConsole, emerg: viewEmerg, guardia: viewGuardia, topo: viewTopo }[S.view] || viewMessages)(m);
+  a11ySweep(m);
 }
 
 function connectScreen() {
@@ -1394,7 +1436,7 @@ function drawNodeFilters() {
   const set = (o) => { nf = { ...nf, ...o }; nfSave(); drawNodeFilters(); renderNodesTable(); };
   const seg = (title, key, opts) => el("div", { class: "nfg" }, el("small", { class: "nft" }, title), el("div", { class: "nfseg" }, ...opts.map(([v, l, tip]) => el("button", { class: nf[key] === v ? "on" : "", title: tip || "", onclick: () => set({ [key]: v }) }, l))));
   const tog = (k) => nf.roles.includes(k) ? nf.roles.filter((x) => x !== k) : [...nf.roles, k];
-  const mins = el("select", { class: "inp nfmin", title: "Tiempo sin recibir señal del nodo para considerarlo desconectado", onchange: (e) => set({ mins: +e.target.value }) }, ...NF_MINS.map(([v, l]) => el("option", { value: v, selected: nf.mins === v }, l)));
+  const mins = el("select", { class: "inp nfmin", "aria-label": "Minutos sin señal para considerar un nodo desconectado", title: "Tiempo sin recibir señal del nodo para considerarlo desconectado", onchange: (e) => set({ mins: +e.target.value }) }, ...NF_MINS.map(([v, l]) => el("option", { value: v, selected: nf.mins === v }, l)));
   const na = nfActive();
   box.replaceChildren(
     seg("Alcance", "scope", [["all", "Todos"], ["direct", "Solo directos", "Escuchados por radio sin saltos intermedios"], ["mqtt", "Solo por MQTT", "Nodos que llegan por un servidor MQTT"]]),
@@ -1446,9 +1488,18 @@ async function nodeAction(a, n) {
     if (a === "del" && confirm(`¿Quitar a ${nodeName(n)} de la lista de nodos del módulo?`)) { await S.device.removeNodeByNum(n.num); S.nodes.delete(n.num); scheduleRefresh("nodes"); }
   } catch (e) { toast("No se pudo completar: " + (e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err"); }
 }
+/* Escape para CSV. Además de las comillas, neutraliza el texto que Excel interpretaría como
+   fórmula: un nombre de nodo o un mensaje llega de una radio ajena, y si empieza con = + - @
+   Excel lo ejecuta al abrir el archivo. Se le antepone un apóstrofo, que Excel no muestra. */
+const csvCell = (s) => {
+  let v = String(s ?? "");
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;
+  return '"' + v.replace(/"/g, '""') + '"';
+};
+window.__csv = csvCell;
 function exportNodes() {
   const head = "id,nombre_largo,nombre_corto,modelo,ultima_vez,snr,saltos,bateria,lat,lon,alt\n";
-  const q = (s) => '"' + String(s ?? "").replace(/"/g, '""') + '"';
+  const q = csvCell;
   const body = nodeList().map((n) => [nodeId(n.num), q(n.user && n.user.longName), q(n.user && n.user.shortName), n.user ? enumName(Mesh.HardwareModel, n.user.hwModel) : "", n.lastHeard ? new Date(n.lastHeard * 1000).toISOString() : "", n.snr ?? "", n.hops ?? "", n.battery ?? "", n.pos ? n.pos.lat : "", n.pos ? n.pos.lon : "", n.pos ? n.pos.alt : ""].join(",")).join("\n");
   download("nodos-lora-mesh.csv", new Blob([head + body], { type: "text/csv" }));
 }
@@ -1583,7 +1634,7 @@ function requestTele(num, kind, silent) {
 /* ── vista de telemetría ── */
 S.tui = { node: null, tab: "summary", metric: null, range: 6 * 3600e3 };
 function viewTele(m) {
-  const sel = el("select", { class: "inp", onchange: (e) => { S.tui.node = +e.target.value; S.tui.tab = "detail"; S.tui.metric = null; renderTeleBody(); syncTabs(); } });
+  const sel = el("select", { class: "inp", "aria-label": "Nodo del que se ve la telemetría", onchange: (e) => { S.tui.node = +e.target.value; S.tui.tab = "detail"; S.tui.metric = null; renderTeleBody(); syncTabs(); } });
   const fillSel = () => {
     const nums = [...new Set([S.me, ...S.tele.keys()])].filter(Boolean).sort((a, b) => (a === S.me ? -1 : b === S.me ? 1 : nodeName(S.nodes.get(a)).localeCompare(nodeName(S.nodes.get(b)))));
     sel.replaceChildren(...nums.map((n) => el("option", { value: n, selected: n === (S.tui.node || S.me) }, nodeName(S.nodes.get(n)) + (n === S.me ? " (vos)" : ""))));
@@ -1637,8 +1688,8 @@ function teleDetail() {
     if (!S.tui.metric || !opts.some(([a, b]) => a === S.tui.metric[0] && b === S.tui.metric[1])) {
       S.tui.metric = opts.find(([a, b]) => b === "batteryLevel") || opts.find(([a, b]) => b === "voltage") || opts[0];
     }
-    const msel = el("select", { class: "inp", onchange: (e) => { S.tui.metric = e.target.value.split("|"); drawTeleChart(); } }, opts.map(([cat, k]) => el("option", { value: cat + "|" + k, selected: cat === S.tui.metric[0] && k === S.tui.metric[1] }, TEL_CATS[cat].split(" /")[0] + " · " + tfLabel(k))));
-    const rsel = el("select", { class: "inp", onchange: (e) => { S.tui.range = +e.target.value; drawTeleChart(); } }, [["3600000", "1 hora"], ["21600000", "6 horas"], ["86400000", "24 horas"], ["604800000", "7 días"], ["0", "Todo"]].map(([v, l]) => el("option", { value: v, selected: +v === S.tui.range }, l)));
+    const msel = el("select", { class: "inp", "aria-label": "Dato a graficar", onchange: (e) => { S.tui.metric = e.target.value.split("|"); drawTeleChart(); } }, opts.map(([cat, k]) => el("option", { value: cat + "|" + k, selected: cat === S.tui.metric[0] && k === S.tui.metric[1] }, TEL_CATS[cat].split(" /")[0] + " · " + tfLabel(k))));
+    const rsel = el("select", { class: "inp", "aria-label": "Período del gráfico", onchange: (e) => { S.tui.range = +e.target.value; drawTeleChart(); } }, [["3600000", "1 hora"], ["21600000", "6 horas"], ["86400000", "24 horas"], ["604800000", "7 días"], ["0", "Todo"]].map(([v, l]) => el("option", { value: v, selected: +v === S.tui.range }, l)));
     wrap.append(el("div", { class: "card" }, el("div", { class: "chartbar" }, el("b", {}, "Gráfico"), msel, rsel), el("canvas", { id: "telechart", class: "telechart" }), el("div", { id: "chartstat", class: "muted" })));
     requestAnimationFrame(drawTeleChart);
   }
@@ -1652,7 +1703,7 @@ function teleDetail() {
       cnt.textContent = hist.length + " muestras · se dibujan solo las visibles";
       vtable(hb, hb, el("thead", {}, el("tr", {}, el("th", {}, "Hora"), keys.map((k) => el("th", {}, k)))), hist, (h) => el("tr", {}, el("td", {}, fDT(h.t)), keys.map((k) => el("td", {}, h[k] === undefined ? "—" : typeof h[k] === "number" ? fmtTele(k, h[k]) : String(h[k])))), keys.length + 1, 34);
     };
-    wrap.append(el("div", { class: "card" }, el("div", { class: "chartbar" }, el("b", {}, "Historial de muestras"), el("select", { class: "inp", onchange: (e) => { S.tui.hcat = e.target.value; drawHist(); } }, hcats.map((c) => el("option", { value: c, selected: c === (S.tui.hcat || hcats[0]) }, TEL_CATS[c] || c))), cnt), hb));
+    wrap.append(el("div", { class: "card" }, el("div", { class: "chartbar" }, el("b", {}, "Historial de muestras"), el("select", { class: "inp", "aria-label": "Cuántas muestras mostrar", onchange: (e) => { S.tui.hcat = e.target.value; drawHist(); } }, hcats.map((c) => el("option", { value: c, selected: c === (S.tui.hcat || hcats[0]) }, TEL_CATS[c] || c))), cnt), hb));
     requestAnimationFrame(drawHist);
   }
   // tarjetas por categoría
@@ -1681,10 +1732,16 @@ function drawTeleChart() {
   c.width = W * dpr; c.height = H * dpr;
   const g = c.getContext("2d");
   const st = $("#chartstat");
+  // Un corte en los datos (el nodo estuvo callado un rato largo) no se dibuja como línea recta:
+  // eso haría creer que hubo mediciones donde no las hubo. Se marca punteado y tenue.
+  const dts = []; for (let i = 1; i < pts.length; i++) dts.push(pts[i].t - pts[i - 1].t);
+  const med = dts.length ? dts.slice().sort((a, b) => a - b)[dts.length >> 1] : 0;
+  const CORTE = Math.max(med * 3, 10 * 60000);
   const paint = (hover) => {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const ink = css("--ink"), mut = css("--mut"), line = css("--line"), acc = css("--acc");
+    const ink = css("--ink"), mut = css("--mut"), line = css("--line"), acc = css("--acc"), bg = css("--bg");
     g.clearRect(0, 0, W, H); g.font = "11px system-ui,sans-serif";
+    g.lineJoin = "round"; g.lineCap = "round"; g.setLineDash([]);
     if (!pts.length) { g.fillStyle = mut; g.textAlign = "left"; g.fillText("Sin datos en este rango de tiempo.", 16, 28); return; }
     const vs = pts.map((p) => p.v); let lo = Math.min(...vs), hi = Math.max(...vs); if (lo === hi) { lo -= 1; hi += 1; }
     const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
@@ -1692,16 +1749,42 @@ function drawTeleChart() {
     const t0 = from || pts[0].t, t1 = Math.max(now, pts[pts.length - 1].t);
     const tx = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * pw, vy = (v) => T + ph - ((v - lo) / (hi - lo)) * ph;
     g.strokeStyle = line; g.fillStyle = mut; g.textAlign = "right"; g.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4, y = vy(v); g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText((hi - lo) > 20 ? v.toFixed(0) : (hi - lo) > 2 ? v.toFixed(1) : v.toFixed(2), L - 6, y + 4); }
+    for (let i = 0; i <= 4; i++) { const v = lo + ((hi - lo) * i) / 4, y = Math.round(vy(v)) + .5; g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.fillText((hi - lo) > 20 ? v.toFixed(0) : (hi - lo) > 2 ? v.toFixed(1) : v.toFixed(2), L - 6, y + 4); }
     g.textAlign = "center";
     for (let i = 0; i <= 4; i++) { const t = t0 + ((t1 - t0) * i) / 4, d = new Date(t); g.fillText(t1 - t0 > 86400000 ? d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit" }) : d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }), tx(t), H - 8); }
-    g.strokeStyle = acc; g.lineWidth = 2; g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(tx(p.t), vy(p.v)) : g.moveTo(tx(p.t), vy(p.v)))); g.stroke();
-    g.fillStyle = acc; pts.forEach((p) => { g.beginPath(); g.arc(tx(p.t), vy(p.v), 2.5, 0, 7); g.fill(); });
+    // la línea del dato, cortada donde no hubo muestras
+    g.strokeStyle = acc; g.lineWidth = 2;
+    let ini = 0;
+    const tramo = (a, b) => {
+      if (a === b) { g.fillStyle = acc; g.beginPath(); g.arc(tx(pts[a].t), vy(pts[a].v), 1.8, 0, 7); g.fill(); return; }
+      g.beginPath(); for (let i = a; i <= b; i++) { const x = tx(pts[i].t), y = vy(pts[i].v); i === a ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke();
+    };
+    for (let i = 1; i <= pts.length; i++) {
+      if (i === pts.length || pts[i].t - pts[i - 1].t > CORTE) {
+        tramo(ini, i - 1);
+        if (i < pts.length) { /* puente punteado: ahí faltan datos, no es una medición */
+          g.save(); g.setLineDash([3, 4]); g.globalAlpha = .45; g.strokeStyle = acc; g.beginPath();
+          g.moveTo(tx(pts[i - 1].t), vy(pts[i - 1].v)); g.lineTo(tx(pts[i].t), vy(pts[i].v)); g.stroke(); g.restore();
+        }
+        ini = i;
+      }
+    }
+    // marcas: en todas las muestras solo si son pocas; la última siempre, con aro para despegarla del fondo
+    g.fillStyle = acc;
+    if (pts.length <= 60) for (const p of pts) { g.beginPath(); g.arc(tx(p.t), vy(p.v), 2.5, 0, 7); g.fill(); }
+    const ult = pts[pts.length - 1], ux = tx(ult.t), uy = vy(ult.v);
+    g.beginPath(); g.arc(ux, uy, 4, 0, 7); g.fill();
+    g.strokeStyle = bg; g.lineWidth = 2; g.beginPath(); g.arc(ux, uy, 4, 0, 7); g.stroke();
     if (hover) {
       const x = tx(hover.t), y = vy(hover.v), txt = new Date(hover.t).toLocaleString("es-AR") + " · " + fmtTele(k, hover.v);
+      g.save(); g.setLineDash([2, 3]); g.strokeStyle = mut; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(Math.round(x) + .5, T); g.lineTo(Math.round(x) + .5, T + ph); g.stroke(); g.restore();
       g.fillStyle = ink; g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill();
-      g.font = "12px system-ui,sans-serif"; const w = g.measureText(txt).width + 14, bx = clamp(x - w / 2, 4, W - w - 4), by = Math.max(2, y - 34);
-      g.fillStyle = ink; g.fillRect(bx, by, w, 22); g.fillStyle = css("--bg"); g.textAlign = "left"; g.fillText(txt, bx + 7, by + 15);
+      g.strokeStyle = bg; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 5, 0, 7); g.stroke();
+      g.font = "12px system-ui,sans-serif";
+      const w = Math.min(g.measureText(txt).width + 14, W - 8), bx = clamp(x - w / 2, 4, Math.max(4, W - w - 4));
+      const by = y - 34 >= 2 ? y - 34 : Math.min(H - 24, y + 12);
+      g.fillStyle = ink; g.fillRect(bx, by, w, 22); g.fillStyle = bg; g.textAlign = "left"; g.fillText(txt, bx + 7, by + 15);
     }
     return { tx };
   };
@@ -1709,16 +1792,21 @@ function drawTeleChart() {
   if (!pts.length) { if (st) st.textContent = ""; return; }
   const vs = pts.map((p) => p.v);
   if (st) st.textContent = `${pts.length} muestras · mín ${fmtTele(k, Math.min(...vs))} · máx ${fmtTele(k, Math.max(...vs))} · prom ${fmtTele(k, vs.reduce((a, b) => a + b, 0) / vs.length)} · última ${fmtTele(k, vs[vs.length - 1])}`;
-  c.onpointermove = (e) => {
+  c.setAttribute("role", "img");
+  c.setAttribute("aria-label", "Gráfico de " + tfLabel(k) + ". " + (st ? st.textContent : ""));
+  const mirar = (e) => {
     const x = e.clientX - c.getBoundingClientRect().left;
     let best = pts[0], bd = 1e9; for (const p of pts) { const d = Math.abs(geo.tx(p.t) - x); if (d < bd) { bd = d; best = p; } }
     paint(best);
   };
+  c.onpointermove = mirar;
+  c.onpointerdown = mirar; /* en pantalla táctil, tocar el gráfico muestra el valor */
   c.onpointerleave = () => paint(null);
+  c.onpointercancel = () => paint(null);
 }
 /* ── exportación ── */
 function exportTeleCSV() {
-  const q = (s) => '"' + String(s ?? "").replace(/"/g, '""') + '"';
+  const q = csvCell;
   const rows = ["fecha_iso,nodo_id,nodo,categoria,campo,valor"];
   for (const [num, cats] of S.tele) for (const [cat, c] of Object.entries(cats)) for (const pt of c.hist) for (const [k, v] of Object.entries(pt)) {
     if (k === "t") continue;
@@ -1797,12 +1885,12 @@ function buildLayersPanel() {
   for (const [k, v] of Object.entries(OVERS)) body.append(chk(v.n, !!(S.map.L.over && S.map.L.over[k]), (on) => { S.map.L.over = { ...(S.map.L.over || {}), [k]: on }; saveLayers(); drawMap(); }));
   body.append(chk("Coordenadas (grados, minutos, segundos)", !!S.map.L.graticule, (on) => { S.map.L.graticule = on; saveLayers(); drawMap(); }));
   const cin = el("input", { class: "inp", placeholder: "Ir a lat, lon  (ej. -40.15, -71.35)" });
-  body.append(el("div", { class: "g2" }, cin, el("button", { class: "mini", onclick: () => { const m = cin.value.replace(",", " ").trim().split(/\s+/).map(Number); if (m.length < 2 || m.some((x) => !isFinite(x)) || Math.abs(m[0]) > 90 || Math.abs(m[1]) > 180) return toast("Coordenadas inválidas", "err"); const o = origin(), p = proj(m[0], m[1], o); S.map.cx = p.x; S.map.cy = p.y; S.map.mpp = Math.min(S.map.mpp, 60); drawMap(); } }, "Ir")));
+  body.append(el("div", { class: "g2" }, cin, el("button", { class: "mini", onclick: () => { const m = cin.value.replace(",", " ").trim().split(/\s+/).map(Number); if (m.length < 2 || m.some((x) => !isFinite(x)) || Math.abs(m[0]) > 90 || Math.abs(m[1]) > 180) return toast("Esas coordenadas no son válidas. Escribí latitud y longitud en grados decimales, por ejemplo -40.148, -71.257.", "err"); const o = origin(), p = proj(m[0], m[1], o); S.map.cx = p.x; S.map.cy = p.y; S.map.mpp = Math.min(S.map.mpp, 60); drawMap(); } }, "Ir")));
   const cnt = el("small", { class: "muted" }, "Mapas guardados: …");
   tileCountDB().then((n) => { cnt.textContent = n == null ? "Sin almacenamiento local disponible" : `Mapas guardados para uso sin conexión: ${n} teselas`; });
-  body.append(el("div", { class: "chips" }, el("button", { class: "mini", id: "dlbtn", onclick: () => openOfflineDialog() }, "⬇ Guardar zona para usar sin conexión…"), el("button", { class: "mini danger", onclick: async () => { if (confirm("¿Borrar todos los mapas guardados?")) { await tileClearDB(); tileMem.clear(); buildLayersPanel(); drawMap(); } } }, "Borrar guardados")), cnt, el("small", { class: "muted" }, "Los mapas que mirás con Internet se guardan solos y se ven después sin conexión."));
+  body.append(el("div", { class: "chips" }, el("button", { class: "mini", id: "dlbtn", onclick: () => openOfflineDialog() }, "⬇ Guardar zona para usar sin conexión…"), el("button", { class: "mini danger", onclick: async () => { if (confirm("¿Borrar todos los mapas guardados para usar sin conexión?\n\nEl mapa en pantalla sigue andando mientras haya Internet, pero para volver a tenerlo sin conexión habrá que descargar las zonas de nuevo.")) { await tileClearDB(); tileMem.clear(); buildLayersPanel(); drawMap(); } } }, "Borrar guardados")), cnt, el("small", { class: "muted" }, "Los mapas que mirás con Internet se guardan solos y se ven después sin conexión."));
   body.append(el("div", { class: "lsec" }, "Colorear nodos por"),
-    el("select", { class: "inp", onchange: (e) => { S.map.L.color = e.target.value; saveLayers(); drawMap(); } }, [["estado", "Estado (semáforo)"], ["ident", "Identidad"], ["snr", "Calidad de señal (SNR)"], ["battery", "Batería"], ["age", "Antigüedad"]].map(([v, l]) => el("option", { value: v, selected: S.map.L.color === v }, l))));
+    el("select", { class: "inp", "aria-label": "Criterio para colorear los nodos", onchange: (e) => { S.map.L.color = e.target.value; saveLayers(); drawMap(); } }, [["estado", "Estado (semáforo)"], ["ident", "Identidad"], ["snr", "Calidad de señal (SNR)"], ["battery", "Batería"], ["age", "Antigüedad"]].map(([v, l]) => el("option", { value: v, selected: S.map.L.color === v }, l))));
   body.append(el("div", { class: "lsec" }, "Mis capas (archivos locales)"));
   if (!S.map.ext.length) body.append(el("small", { class: "muted" }, "GeoJSON, GPX, KML, imágenes de mapa y carpetas de teselas z/x/y."));
   for (const e of S.map.ext) body.append(extRow(e));
@@ -2317,7 +2405,7 @@ function pktMeta(pkt, bytes) {
 function openPrintDialog() {
   const cur = S.conv;
   const o = { scope: "cur", range: "all", from: "", to: "", detail: "full", cover: true, nodes: true, chans: true, order: "asc" };
-  const sel = (id, opts, val) => el("select", { class: "inp", id, onchange: (e) => (o[id] = e.target.value) }, opts.map(([v, l]) => el("option", { value: v, selected: v === val }, l)));
+  const sel = (id, opts, val) => el("select", { class: "inp", id, "aria-label": id, onchange: (e) => (o[id] = e.target.value) }, opts.map(([v, l]) => el("option", { value: v, selected: v === val }, l)));
   const ck = (key, label) => el("label", { class: "ck" }, el("input", { type: "checkbox", checked: o[key], onchange: (e) => (o[key] = e.target.checked) }), el("span", {}, label));
   const count = el("small", { class: "muted" }, "");
   const upd = () => { const n = reportMessages(o).length; count.textContent = n + (n === 1 ? " mensaje" : " mensajes") + " en el informe"; };
@@ -2624,7 +2712,7 @@ const sv = (tag, attrs = {}, ...kids) => { const e = document.createElementNS(SV
 const evOf = (e) => e.ev.slice().sort((x, y) => EV_RANK[y.kind] - EV_RANK[x.kind] || y.t - x.t);
 function viewTopo(m) {
   const c = tpCfg();
-  const sel = el("select", { class: "inp", onchange: (e) => { tpSave({ maxAge: +e.target.value }); S.topo.fitted = false; topoDraw(); } }, [[3600, "1 hora"], [21600, "6 horas"], [86400, "24 horas"], [604800, "7 días"], [0, "Todo lo guardado"]].map(([v, l]) => el("option", { value: v, selected: c.maxAge === v }, l)));
+  const sel = el("select", { class: "inp", "aria-label": "Antigüedad máxima de las mediciones", onchange: (e) => { tpSave({ maxAge: +e.target.value }); S.topo.fitted = false; topoDraw(); } }, [[3600, "1 hora"], [21600, "6 horas"], [86400, "24 horas"], [604800, "7 días"], [0, "Todo lo guardado"]].map(([v, l]) => el("option", { value: v, selected: c.maxAge === v }, l)));
   const ck = (k, label, cls) => el("label", { class: "ck tpk " + cls }, el("input", { type: "checkbox", checked: c[k], onchange: (e) => { tpSave({ [k]: e.target.checked }); S.topo.sel = null; topoDraw(); topoPanel(); } }), el("span", {}, label));
   m.append(el("div", { class: "topoview" },
     el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Topología de la red"), el("small", { class: "muted" }, "Qué nodos se escuchan directamente, qué rutas se conocen y cuáles dependen de repetidores.")),
@@ -2763,11 +2851,11 @@ function viewGuardia(m) {
   const meta = gdMeta(), box = el("div", { class: "gdview" }); m.append(box);
   const fromIn = el("input", { class: "inp", type: "datetime-local", onchange: (e) => { gdF.preset = "custom"; gdF.from = e.target.value ? +new Date(e.target.value) : 0; sync(); upd(); } });
   const toIn = el("input", { class: "inp", type: "datetime-local", onchange: (e) => { gdF.preset = "custom"; gdF.to = e.target.value ? +new Date(e.target.value) + 59999 : 0; sync(); upd(); } });
-  const preset = el("select", { class: "inp", onchange: (e) => { gdF.preset = e.target.value; if (gdF.preset === "custom") { const [a, b] = gdRange(); gdF.from = a; gdF.to = b; } sync(); upd(); } },
+  const preset = el("select", { class: "inp", "aria-label": "Período del libro de guardia", onchange: (e) => { gdF.preset = e.target.value; if (gdF.preset === "custom") { const [a, b] = gdRange(); gdF.from = a; gdF.to = b; } sync(); upd(); } },
     [["8h", "Últimas 8 horas"], ["12h", "Últimas 12 horas"], ["24h", "Últimas 24 horas"], ["today", "Hoy (desde las 00:00)"], ["yesterday", "Ayer"], ["custom", "Personalizado (desde / hasta)"]].map(([v, l]) => el("option", { value: v, selected: gdF.preset === v }, l)));
   const sync = () => { const [a, b] = gdRange(); fromIn.value = toLocalInput(a); toIn.value = toLocalInput(b); preset.value = gdF.preset; };
   const ck = (label, get, set) => el("label", { class: "ck" }, el("input", { type: "checkbox", checked: get(), onchange: (e) => { set(e.target.checked); upd(); } }), el("span", {}, label));
-  const nodeSel = el("select", { class: "inp", onchange: (e) => { gdF.node = e.target.value; upd(); } }, [el("option", { value: "" }, "Todos los nodos"), ...gdNodeNames().map((n) => el("option", { value: n, selected: gdF.node === n }, n))]);
+  const nodeSel = el("select", { class: "inp", "aria-label": "Filtrar por nodo", onchange: (e) => { gdF.node = e.target.value; upd(); } }, [el("option", { value: "" }, "Todos los nodos"), ...gdNodeNames().map((n) => el("option", { value: n, selected: gdF.node === n }, n))]);
   const cnt = el("div", { class: "gdcount" }), holder = el("div", { class: "tblwrap gdtbl" });
   const unit = el("input", { class: "inp", value: meta.unit, placeholder: "Ej.: Base central / Puesto", onchange: (e) => gdSave({ unit: e.target.value }) });
   const chief = el("input", { class: "inp", value: meta.chief, placeholder: "Jefe de guardia / operador", onchange: (e) => gdSave({ chief: e.target.value }) });
@@ -2775,7 +2863,7 @@ function viewGuardia(m) {
   let list = [];
   const upd = () => {
     list = gdEntries(); const crit = list.filter((x) => x.crit).length;
-    cnt.replaceChildren(el("b", {}, list.length + (list.length === 1 ? " registro" : " registros")), el("span", { class: "muted" }, " · "), el("b", { style: "color:#ef4444" }, crit + (crit === 1 ? " crítico" : " críticos")), el("span", { class: "muted" }, " · período en hora local " + utcOff(new Date()) + " (la columna UTC se exporta aparte)"));
+    cnt.replaceChildren(el("b", {}, list.length + (list.length === 1 ? " registro" : " registros")), el("span", { class: "muted" }, " · "), el("b", { class: "gdcrit" }, crit + (crit === 1 ? " crítico" : " críticos")), el("span", { class: "muted" }, " · período en hora local " + utcOff(new Date()) + " (la columna UTC se exporta aparte)"));
     if (!list.length) { holder.replaceChildren(el("div", { class: "empty" }, "No hay registros en ese período con los filtros elegidos.")); return; }
     const head = el("thead", {}, el("tr", {}, ["Fecha y hora local", "Hora UTC", "Tipo", "Nodo", "Canal / destino", "Detalle"].map((h) => el("th", {}, h))));
     vtable(holder, holder, head, list, (x) => el("tr", { class: "vrow" + (x.crit ? " crit" : "") }, el("td", { class: "nw" }, fDT(x.t)), el("td", { class: "nw" }, fUTC(x.t)), el("td", { class: "nw" }, x.icon + " " + x.label), el("td", {}, x.node), el("td", {}, x.chan), el("td", { class: "gdtx", title: x.detail }, x.detail)), 6, 40);
@@ -2793,7 +2881,7 @@ function viewGuardia(m) {
   sync(); upd();
 }
 /* ── exportación ── */
-const csvQ = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+const csvQ = csvCell;
 function gdFile(ext) { const d = new Date(); return "novedades-guardia-" + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + "-" + p2(d.getHours()) + p2(d.getMinutes()) + "." + ext; }
 function gdExport(kind, list) {
   if (!list.length) return toast("No hay registros para exportar con este filtro", "err");
@@ -2979,7 +3067,7 @@ async function applySettings(fn, reboots) {
     else toast("Guardado en el nodo", "ok");
   } catch (e) {
     S.expectReboot = false;
-    toast("Error al guardar: " + (e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err");
+    toast("No se pudo guardar: " + (e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err");
     throw e;
   }
 }
@@ -2990,7 +3078,6 @@ const BITS = { "PositionConfig.positionFlags": "Config.PositionConfig.PositionFl
 const NESTED_OK = new Set(["meshtastic.Config.NetworkConfig.IpV4Config", "meshtastic.ModuleConfig.MapReportSettings"]);
 const fwNum = (s) => { const m = /(\d+)\.(\d+)\.(\d+)/.exec(s || ""); return m ? +m[1] * 1e6 + +m[2] * 1e3 + +m[3] : 0; };
 const enumShort = (e) => e.typeName.replace(/^meshtastic\./, "");
-const enumLabel = (e, num) => { const t = ES_E[enumShort(e)]; return (t && t[num] && t[num].l) || (e.values.find((v) => v.number === num) || {}).name || String(num); };
 function fieldInfo(d, f) {
   const sec = d.typeName.replace(/^meshtastic\./, ""), short = sec.split(".").pop(), name = f.localName;
   const meta = (FIELD_META["meshtastic." + sec] || {})[name] || {}, x = ES_X[short + "." + name], off = (ES_OFFICIAL[sec] || {})[name] || {}, l = L[name];
@@ -3044,7 +3131,7 @@ function buildForm({ desc, value, only, hide = [], onSave }) {
         get = () => cbs.reduce((a, x) => a | (x.c.checked ? x.n : 0), 0) >>> 0;
         orig = Number(v || 0);
       } else if (f.fieldKind === "enum") {
-        const et = ES_E[enumShort(f.enum)] || {}, sel = el("select", { class: "inp", onchange: () => { upd(); onch(); } });
+        const et = ES_E[enumShort(f.enum)] || {}, sel = el("select", { class: "inp", "aria-label": info.label, onchange: () => { upd(); onch(); } });
         if (opt) sel.append(el("option", { value: "" }, "— sin definir —"));
         for (const o of f.enum.values) { const t = et[o.number] || {}; if (t.dep && o.number !== v) continue; sel.append(el("option", { value: o.number, selected: v !== undefined && o.number === v, title: o.name }, t.l || o.name)); }
         const ds = el("small", { class: "muted edesc" });
@@ -3127,7 +3214,7 @@ function fixedPosBox() {
   return el("div", { class: "card" }, el("b", {}, "Fijar posición manualmente"),
     el("small", { class: "muted" }, "Útil para nodos fijos sin GPS (repetidores en cerro, torre, etc.). Después activá “Posición fija” arriba."),
     el("div", { class: "g2" }, el("label", {}, "Latitud", la), el("label", {}, "Longitud", lo)),
-    el("button", { class: "btn", onclick: async () => { const a = parseFloat(la.value), b = parseFloat(lo.value); if (!isFinite(a) || !isFinite(b)) return toast("Coordenadas inválidas", "err"); if (S.demo) return toast("Modo demo"); try { await S.device.setFixedPosition(a, b); toast("Posición fija enviada", "ok"); } catch (e) { toast("Error: " + (e.message || e), "err"); } } }, "Enviar posición"));
+    el("button", { class: "btn", onclick: async () => { const a = parseFloat(la.value), b = parseFloat(lo.value); if (!isFinite(a) || !isFinite(b)) return toast("Esas coordenadas no son válidas. Escribí latitud y longitud en grados decimales, por ejemplo -40.148, -71.257.", "err"); if (S.demo) return toast("Modo demo"); try { await S.device.setFixedPosition(a, b); toast("Posición fija enviada", "ok"); } catch (e) { toast("Error: " + (e.message || e), "err"); } } }, "Enviar posición"));
 }
 
 /* ── Canales ── */
@@ -3137,7 +3224,7 @@ function viewChannels(body) {
   for (let i = 0; i < 8; i++) {
     const ch = S.channels[i] || create(NChannel.ChannelSchema, { index: i, role: i === 0 ? 1 : 0, settings: {} });
     const set = ch.settings || create(NChannel.ChannelSettingsSchema);
-    const roleSel = el("select", { class: "inp" }, [["0", "Desactivado"], ["1", "Primario"], ["2", "Secundario"]].map(([v, t]) => el("option", { value: v, selected: +v === ch.role }, t)));
+    const roleSel = el("select", { class: "inp", "aria-label": "Rol del canal" }, [["0", "Desactivado"], ["1", "Primario"], ["2", "Secundario"]].map(([v, t]) => el("option", { value: v, selected: +v === ch.role }, t)));
     const name = el("input", { class: "inp", value: set.name || "", maxlength: 11 });
     const psk = el("input", { class: "inp mono", value: set.psk && set.psk.length ? b64(set.psk) : "" });
     const up = el("input", { type: "checkbox", checked: !!set.uplinkEnabled }), down = el("input", { type: "checkbox", checked: !!set.downlinkEnabled });
@@ -3153,8 +3240,8 @@ function viewChannels(body) {
         row("Bajar de MQTT", "", el("label", { class: "sw" }, down, el("span", {}))),
         row("Precisión de posición", "Bits (0 = no compartir, 32 = exacta)", prec),
         el("div", { class: "rowbtn" }, el("button", { class: "btn", onclick: async (e) => {
-          let key; try { key = psk.value.trim() ? unb64(psk.value) : new Uint8Array(); } catch (err) { return toast("La clave no es base64 válido", "err"); }
-          if (![0, 1, 16, 32].includes(key.length)) return toast("La clave debe tener 0, 1, 16 o 32 bytes", "err");
+          let key; try { key = psk.value.trim() ? unb64(psk.value) : new Uint8Array(); } catch (err) { return toast("La clave no está en base64. Pegala tal como la copiaste del otro equipo, sin espacios de más.", "err"); }
+          if (![0, 1, 16, 32].includes(key.length)) return toast("La clave tiene un largo que el módulo no acepta: dejala vacía, o usá una de 1, 16 o 32 bytes (las de 32 son las del QR).", "err");
           const nc = create(NChannel.ChannelSchema, { index: i, role: i === 0 ? 1 : +roleSel.value, settings: { name: name.value, psk: key, uplinkEnabled: up.checked, downlinkEnabled: down.checked, moduleSettings: { positionPrecision: parseInt(prec.value, 10) || 0 } } });
           e.target.disabled = true;
           try { await applySettings(() => sendAdmin("setChannel", nc), true); S.channels[i] = nc; } catch (err) {} finally { e.target.disabled = false; }
@@ -3189,7 +3276,7 @@ function shareBox() {
     el("small", { class: "muted" }, "El enlace y el código QR contienen las claves de los canales: compartilos solo con gente de confianza. Se generan acá mismo, sin internet, y son compatibles con las demás apps LoRa Mesh."),
     el("div", { class: "chips" },
       el("button", { class: "mini acc", onclick: () => { try { showChannelQR(url(), names()); } catch (e) { toast("No se pudo generar el QR: " + (e.message || e), "err"); } } }, "▣ Mostrar código QR"),
-      el("button", { class: "mini", onclick: () => { try { const u = url(); if (IS_APP && window.AndroidBridge.copyText) { window.AndroidBridge.copyText(u); toast("Enlace copiado"); } else navigator.clipboard.writeText(u).then(() => toast("Enlace copiado")); } catch (e) { toast("No se pudo generar", "err"); } } }, "Copiar enlace de mis canales")),
+      el("button", { class: "mini", onclick: () => { try { const u = url(); if (IS_APP && window.AndroidBridge.copyText) { window.AndroidBridge.copyText(u); toast("Enlace copiado"); } else navigator.clipboard.writeText(u).then(() => toast("Enlace copiado")); } catch (e) { toast("No se pudo armar el enlace del canal. Revisá que el canal tenga nombre y clave.", "err"); } } }, "Copiar enlace de mis canales")),
     el("div", { class: "g2" }, imp, el("div", { class: "chips", style: "margin:0" },
       el("button", { class: "btn ghost", onclick: () => scanChannelQR((t) => { imp.value = t; if (!/#/.test(t)) return toast("El código leído no es de canales: " + t.slice(0, 60), "err"); doImport(); }) }, "📷 Escanear QR"),
       el("button", { class: "btn", onclick: doImport }, "Importar"))));
@@ -3314,7 +3401,7 @@ function viewPerf(body) {
       ...Object.entries(d.almacenamiento.out).map(([k, v]) => el("div", { class: "tprow sub" }, el("span", {}, k), el("b", {}, fmtKB(v)))),
       fila("Servidores MQTT conectados", d.mqtt), fila("Equipo", d.nucleos + " núcleos · " + d.memoriaGB + " GB"),
       el("div", { class: "chips" },
-        el("button", { class: "mini acc", onclick: async () => { try { await navigator.clipboard.writeText(perfTexto(d)); toast("Diagnóstico copiado: pegalo donde lo necesites", "ok"); } catch (e) { toast("No se pudo copiar", "err"); } } }, "Copiar diagnóstico"),
+        el("button", { class: "mini acc", onclick: async () => { try { await navigator.clipboard.writeText(perfTexto(d)); toast("Diagnóstico copiado: pegalo donde lo necesites", "ok"); } catch (e) { toast("El navegador no dejó copiar al portapapeles. Seleccioná el texto a mano y copialo con Ctrl+C.", "err"); } } }, "Copiar diagnóstico"),
         el("button", { class: "mini", onclick: () => download("diagnostico-rendimiento.txt", new Blob([perfTexto(d)], { type: "text/plain;charset=utf-8" })) }, "Guardar en un archivo")));
   };
   const medir = el("button", { class: "btn", onclick: async () => { medir.disabled = true; medir.textContent = "Midiendo…"; res.replaceChildren(el("small", { class: "muted" }, "Midiendo durante 3 segundos, no toques nada…")); const d = await perfMedir(); pintar(d); medir.disabled = false; medir.textContent = "Medir de nuevo"; } }, "Medir ahora");
@@ -3368,7 +3455,7 @@ function viewSound(body) {
 }
 function viewSystem(body) {
   const rb = numIn(5, 0, 3600), sd = numIn(5, 0, 3600), dd = numIn(30, 1, 3650);
-  const bkLoc = el("select", { class: "inp", style: "width:140px" }, el("option", { value: 0 }, "Memoria flash"), el("option", { value: 1 }, "Tarjeta SD"));
+  const bkLoc = el("select", { class: "inp", style: "width:140px", "aria-label": "Dónde guardar el respaldo dentro del nodo" }, el("option", { value: 0 }, "Memoria flash"), el("option", { value: 1 }, "Tarjeta SD"));
   const inactive = () => { const lim = Date.now() / 1000 - (+dd.value || 30) * 86400; return [...S.nodes.values()].filter((n) => n.num !== S.me && !n.fav && (!n.lastHeard || n.lastHeard < lim)); };
   const fi = el("input", { type: "file", accept: ".cfg,.bin", style: "display:none", onchange: (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) f.arrayBuffer().then((b) => openRestoreDialog(new Uint8Array(b), f.name)).catch((er) => toast("No se pudo leer el archivo: " + er.message, "err")); } });
   const keysCk = el("input", { type: "checkbox" });
@@ -3376,7 +3463,7 @@ function viewSystem(body) {
     el("div", { class: "form" },
       secH("Energía"),
       actRow("Reiniciar", "El portal se reconecta solo cuando el nodo vuelve.", [rb, el("span", { class: "unit" }, "s"), btn("Reiniciar", async () => { S.expectReboot = true; await sendAdmin("rebootSeconds", Math.max(0, +rb.value | 0)); toast("Reiniciando…"); })]),
-      actRow("Apagar", "Hay que volver a encenderlo a mano.", [sd, el("span", { class: "unit" }, "s"), btn("Apagar", async () => { if (confirm("¿Apagar el nodo?")) { await sendAdmin("shutdownSeconds", Math.max(0, +sd.value | 0)); toast("Apagando…"); } })]),
+      actRow("Apagar", "Hay que volver a encenderlo a mano.", [sd, el("span", { class: "unit" }, "s"), btn("Apagar", async () => { if (confirm("¿Apagar el nodo?\n\nDeja de recibir y de repetir mensajes. Para encenderlo hay que apretar el botón del módulo: no se puede prender desde el portal.")) { await sendAdmin("shutdownSeconds", Math.max(0, +sd.value | 0)); toast("Apagando…"); } })]),
       actRow("Modo DFU (nRF52)", "Reinicia el equipo como unidad USB para cargar firmware arrastrando el .uf2. Solo placas nRF52 (RAK4631, T-Echo…).", btn("Entrar en modo DFU", async () => { if (confirm("El nodo dejará de responder hasta que cargues firmware o lo reinicies a mano. ¿Continuar?")) { await sendAdmin("enterDfuModeRequest", true); toast("Modo DFU solicitado"); } })),
       secH("Hora"),
       actRow("Poner en hora el nodo", "Copia la hora de esta computadora al nodo (útil sin GPS ni Internet). Los mensajes y posiciones usan esta hora.", btn("Sincronizar con esta PC", async () => { await sendAdmin("setTimeOnly", Math.floor(Date.now() / 1000)); toast("Hora enviada: " + new Date().toLocaleString(), "ok"); })),
@@ -3384,7 +3471,7 @@ function viewSystem(body) {
       actRow("Tonos de notificación", "Elegí un tono para cada tipo de aviso, el volumen, el silencio nocturno y los canales silenciados.", btn("Configurar sonidos…", async () => setView("settings", "portal.snd"))),
       secH("Lista de nodos"),
       actRow("Borrar nodos inactivos", "Quita del nodo los contactos sin actividad hace más de N días (no toca favoritos).", [dd, el("span", { class: "unit" }, "días"), btn("Borrar", async () => { const l = inactive(); if (!l.length) return toast("No hay nodos inactivos con ese criterio"); if (!confirm(`Se van a quitar ${l.length} nodo(s) de la lista del módulo. ¿Continuar?`)) return; for (const n of l) { await sendAdmin("removeByNodenum", n.num); S.nodes.delete(n.num); } scheduleRefresh("all"); toast(l.length + " nodo(s) quitados", "ok"); })]),
-      actRow("Borrar toda la lista de nodos", "Vacía el NodeDB del módulo; los nodos se vuelven a descubrir con el tiempo.", btn("Borrar lista", async () => { if (confirm("¿Borrar la lista de nodos del módulo?")) { S.expectReboot = true; await sendAdmin("nodedbReset", true); S.nodes.clear(); upsertNode(S.me, {}); toast("Lista de nodos reiniciada"); } })),
+      actRow("Borrar toda la lista de nodos", "Vacía el NodeDB del módulo; los nodos se vuelven a descubrir con el tiempo.", btn("Borrar lista", async () => { if (confirm("¿Borrar la lista de nodos que guarda el módulo?\n\nEl módulo olvida todos los nodos que conoce y los vuelve a aprender a medida que los escucha. Lo guardado en el portal no se toca.")) { S.expectReboot = true; await sendAdmin("nodedbReset", true); S.nodes.clear(); upsertNode(S.me, {}); toast("Lista de nodos reiniciada"); } })),
       secH("Respaldo y restauración", "Archivo .cfg (perfil de dispositivo del sistema LoRa Mesh): nombre, canales, configuración de radio/dispositivo/módulos, posición fija, mensajes predefinidos y tono."),
       actRow("Guardar respaldo en un archivo", "Descarga un .cfg con la configuración actual del nodo. Contiene las claves de los canales: guardalo en un lugar seguro.", [el("label", { class: "ck" }, keysCk, el("span", {}, "Incluir clave privada del nodo")), btn("Descargar respaldo", () => exportProfile(keysCk.checked), "")]),
       actRow("Restaurar desde un archivo", "Elegí un .cfg y revisá qué secciones aplicar antes de enviarlas al nodo.", [btn("Elegir archivo…", async () => fi.click(), "")]),
@@ -3393,7 +3480,7 @@ function viewSystem(body) {
       actRow("Exportar telemetría y configuración", "Volcado completo en JSON: configuración, canales (sin claves), nodos, telemetría, rastros y waypoints.", el("button", { class: "btn ghost", onclick: () => exportDump() }, "Exportar JSON")),
       actRow("Imprimir / guardar chats en PDF", "Informe con todos los datos de cada mensaje, listo para imprimir o guardar como PDF.", el("button", { class: "btn ghost", onclick: () => openPrintDialog() }, "Abrir informe")),
       actRow("Exportar mensajes", "Descarga el historial guardado en este navegador (JSON).", el("button", { class: "btn ghost", onclick: () => download("mensajes-lora-mesh.json", new Blob([JSON.stringify(S.msgs, null, 1)], { type: "application/json" })) }, "Descargar")),
-      actRow("Borrar historial local", "Elimina mensajes y nodos guardados en este navegador.", el("button", { class: "btn ghost", onclick: () => { if (confirm("¿Borrar el historial guardado en el navegador?")) { S.msgs = []; try { localStorage.removeItem(cacheKey("msgs")); localStorage.removeItem(cacheKey("nodes")); } catch (e) {} scheduleRefresh("all"); toast("Historial local borrado"); } } }, "Borrar")),
+      actRow("Borrar historial local", "Elimina mensajes y nodos guardados en este navegador.", el("button", { class: "btn ghost", onclick: () => { if (confirm("¿Borrar el historial guardado en esta computadora?\n\nSe pierden los mensajes, la telemetría y las novedades guardados acá. No se puede deshacer.")) { S.msgs = []; try { localStorage.removeItem(cacheKey("msgs")); localStorage.removeItem(cacheKey("nodes")); } catch (e) {} scheduleRefresh("all"); toast("Historial local borrado"); } } }, "Borrar")),
       secH("Zona peligrosa"),
       actRow("Restablecer la configuración", "Vuelve toda la configuración a los valores de fábrica pero conserva la identidad (claves) y la lista de nodos.", btn("Restablecer configuración", async () => { if (prompt("Escribí RESTABLECER para confirmar") === "RESTABLECER") { S.expectReboot = true; await sendAdmin("factoryResetConfig", 1); toast("Configuración restablecida"); } }, "danger")),
       actRow("Restablecer de fábrica (todo)", "Borra TODO: configuración, claves, canales y nodos. No se puede deshacer.", btn("Restablecer de fábrica", async () => { if (prompt("Escribí BORRAR TODO para confirmar") === "BORRAR TODO") { S.expectReboot = true; await sendAdmin("factoryResetDevice", 1); toast("Restablecido de fábrica"); } }, "danger"))), fi);
@@ -3534,7 +3621,6 @@ const MQ_PRESETS = [
   { name: "Eclipse IoT (público)", url: "wss://mqtt.eclipseprojects.io:443/mqtt", host: "mqtt.eclipseprojects.io" },
   { name: "Flespi", url: "wss://mqtt.flespi.io:443/", host: "mqtt.flespi.io", user: "FlespiToken " },
 ];
-const BRIDGE_URL = "ws://localhost:9001/";
 const SRV_DEF = [
   { name: "Servidor público oficial", host: "mqtt.meshtastic.org", port: 8883, tls: true, url: "", user: "meshdev", pass: "large4cats", root: "", enabled: true },
   { name: "HiveMQ (público)", host: "broker.hivemq.com", port: 8883, tls: true, url: "wss://broker.hivemq.com:8884/mqtt", user: "", pass: "", root: "", enabled: true },
@@ -4236,13 +4322,30 @@ function sparkSvg(pts, opt = {}) { /* pts: [{t, v}] */
   const X = (t) => P + ((t - t0) / Math.max(1, t1 - t0)) * (W - 2 * P), Y = (v) => H - P - ((v - lo) / (hi - lo)) * (H - 2 * P);
   const ns = "http://www.w3.org/2000/svg", s = document.createElementNS(ns, "svg");
   s.setAttribute("viewBox", `0 0 ${W} ${H}`); s.setAttribute("class", "nsspark"); s.setAttribute("preserveAspectRatio", "none");
-  const pl = document.createElementNS(ns, "polyline");
-  pl.setAttribute("points", pts.map((p) => X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1)).join(" "));
-  s.append(pl);
-  const last = pts[pts.length - 1], c = document.createElementNS(ns, "circle");
-  c.setAttribute("cx", X(last.t)); c.setAttribute("cy", Y(last.v)); c.setAttribute("r", 3); s.append(c);
+  s.setAttribute("aria-hidden", "true"); /* el resumen de abajo dice lo mismo en palabras */
+  // los huecos largos sin muestras se cortan: una línea recta ahí haría creer que hubo datos
+  const dts = []; for (let i = 1; i < pts.length; i++) dts.push(pts[i].t - pts[i - 1].t);
+  const med = dts.slice().sort((a, b) => a - b)[dts.length >> 1] || 0;
+  const corte = Math.max(med * 3, 10 * 60000);
+  let d = "", puente = "";
+  pts.forEach((p, i) => {
+    const salto = i > 0 && p.t - pts[i - 1].t > corte;
+    if (salto) puente += "M" + X(pts[i - 1].t).toFixed(1) + "," + Y(pts[i - 1].v).toFixed(1) + "L" + X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1) + " ";
+    d += (i === 0 || salto ? "M" : "L") + X(p.t).toFixed(1) + "," + Y(p.v).toFixed(1) + " ";
+  });
+  if (puente) { const pb = document.createElementNS(ns, "path"); pb.setAttribute("d", puente.trim()); pb.setAttribute("class", "hueco"); s.append(pb); }
+  const pa = document.createElementNS(ns, "path"); pa.setAttribute("d", d.trim()); s.append(pa);
   const fmt = opt.fmt || ((v) => (Math.round(v * 10) / 10).toString());
-  return el("div", { class: "nssw" }, s, el("div", { class: "nsrange" }, el("small", {}, "mín " + fmt(Math.min(...pts.map((p) => p.v))) + (opt.u || "")), el("small", {}, hhmm(t0) + " → " + hhmm(t1)), el("small", {}, "máx " + fmt(Math.max(...pts.map((p) => p.v))) + (opt.u || ""))));
+  const last = pts[pts.length - 1], vals = pts.map((p) => p.v);
+  // el punto de la última medición va como elemento propio: así no lo deforma el estirado del SVG
+  const punto = el("i", { class: "nsdot", "aria-hidden": "true" });
+  punto.style.left = (X(last.t) / W) * 100 + "%";
+  punto.style.top = (Y(last.v) / H) * 100 + "%";
+  const resumen = el("div", { class: "nsrange" }, el("small", {}, "mín " + fmt(Math.min(...vals)) + (opt.u || "")), el("small", {}, hhmm(t0) + " → " + hhmm(t1)), el("small", {}, "máx " + fmt(Math.max(...vals)) + (opt.u || "")));
+  const caja = el("div", { class: "nssw" }, el("div", { class: "nsplot" }, s, punto), resumen);
+  caja.setAttribute("role", "img");
+  caja.setAttribute("aria-label", pts.length + " muestras entre " + hhmm(t0) + " y " + hhmm(t1) + ": mínimo " + fmt(Math.min(...vals)) + (opt.u || "") + ", máximo " + fmt(Math.max(...vals)) + (opt.u || "") + ", última " + fmt(last.v) + (opt.u || ""));
+  return caja;
 }
 function openNodeSheet(num) {
   nsNum = num;
@@ -4351,7 +4454,7 @@ function msgMenu(x, anchor) {
   msgMenuEl = el("div", { class: "msgmenu", role: "menu" },
     el("div", { class: "mmr" }, REACTS.map((e) => el("button", { class: "mme", title: "Reaccionar " + e, disabled: !ok || !ready(), onclick: () => { closeMsgMenu(); sendReact(x, e); } }, e))),
     item("↩ Responder", () => setReply(x), !ok),
-    item("Copiar texto", () => { if (IS_APP && window.AndroidBridge.copyText) { window.AndroidBridge.copyText(x.text); toast("Texto copiado"); } else navigator.clipboard.writeText(x.text).then(() => toast("Texto copiado"), () => toast("No se pudo copiar", "err")); }),
+    item("Copiar texto", () => { if (IS_APP && window.AndroidBridge.copyText) { window.AndroidBridge.copyText(x.text); toast("Texto copiado"); } else navigator.clipboard.writeText(x.text).then(() => toast("Texto copiado"), () => toast("El navegador no dejó copiar al portapapeles. Seleccioná el texto a mano y copialo con Ctrl+C.", "err")); }),
     !x.mine ? item("Ver detalle del nodo", () => openNodeSheet(x.from)) : null,
     !x.mine && !x.dm ? item("Responder en privado", () => openDM(x.from)) : null);
   document.body.append(msgMenuEl);

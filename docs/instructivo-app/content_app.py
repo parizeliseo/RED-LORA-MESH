@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.3.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.4.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [
@@ -118,6 +118,7 @@ ch("Nodos y ficha de cada nodo",
          "<b>Vecinos</b> que informa escuchar y los que dicen escucharlo a él.",
          "<b>Rutas medidas</b>: los últimos traceroute, ida y vuelta.",
          "Acciones: mensaje directo, trazar ruta, pedir posición, ver en el mapa, cómo llegar y telemetría."]),
+ ("note", "<b>Los cortes de los gráficos.</b> Cada gráfico de la ficha lleva debajo el m\u00ednimo, el m\u00e1ximo y el per\u00edodo que abarca. Si el nodo estuvo un rato largo sin informar, el tramo se dibuja <b>punteado y apagado</b> en vez de una l\u00ednea llena: ah\u00ed no hubo mediciones. Conviene tenerlo en cuenta al mirar bater\u00eda o se\u00f1al, porque un salto punteado es falta de datos y no una ca\u00edda real."),
 )
 
 ch("Mapa",

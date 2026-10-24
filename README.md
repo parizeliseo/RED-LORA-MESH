@@ -18,7 +18,7 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 | Archivo | Qué es |
 |---|---|
 | [`portal-lora-mesh.html`](publicado/portal-lora-mesh.html) | El portal para PC. Un solo archivo: se abre con doble clic. |
-| [`OPEN-SOURCE-PARIZ-app-1.3.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.3.apk) | La aplicación Android (7.0 o más nuevo). |
+| [`OPEN-SOURCE-PARIZ-app-1.4.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.4.apk) | La aplicación Android (7.0 o más nuevo). |
 | [`Instructivo-portal-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo del portal, con capturas. |
 | [`Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación. |
 
@@ -35,7 +35,9 @@ esta fuente. No está en Google Play.
 - Mensajes por radio a canales o a un nodo puntual, con reintentos automáticos, respuestas
   citadas y reacciones con emoji.
 - Lista de nodos con filtros y favoritos, y una ficha por nodo con señal, batería, vecinos,
-  rutas medidas y gráficos de evolución.
+  rutas medidas y gráficos de evolución. Los gráficos **marcan los huecos**: si el nodo estuvo
+  callado un rato largo, ese tramo va punteado en vez de una línea llena, para no hacer creer que
+  hubo mediciones donde no las hubo.
 - Mapa con los nodos, su altura y su estado, con **descarga de zonas para usar sin señal**.
 - **Topología** de la red que separa lo medido de lo inferido: nunca afirma que existe un enlace
   directo si los datos no lo confirman.

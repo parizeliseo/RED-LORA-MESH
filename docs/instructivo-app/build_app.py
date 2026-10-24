@@ -38,7 +38,7 @@ def build(pages=None):
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de la app OPEN SOURCE PARIZ</title><style>{css}</style></head><body>
 <section class="cover"><div class="cv-top"><div class="logo">▲</div><div><b>OPEN SOURCE PARIZ</b><br><small>Sistema LoRa Mesh</small></div></div>
 <div class="cv-mid"><div class="kicker">INSTRUCTIVO DE LA APLICACIÓN</div><h1>Aplicación Android<br>LoRa Mesh</h1><p>Guía completa, paso a paso, con capturas: instalación, permisos, conexión por Bluetooth, cable USB y WiFi, mensajes, mapa sin conexión, avisos, GPS y códigos QR.</p></div>
-<div class="cv-bot"><div><b>Aplicación</b><br>versión 1.3</div><div><b>Fecha</b><br>21 de octubre de 2026</div><div><b>Requisitos</b><br>Android 7.0 o más nuevo</div></div></section>
+<div class="cv-bot"><div><b>Aplicación</b><br>versión 1.4</div><div><b>Fecha</b><br>23 de octubre de 2026</div><div><b>Requisitos</b><br>Android 7.0 o más nuevo</div></div></section>
 <section class="tocp"><h2 class="toch">Contenido</h2><ol class="toc">{toc}</ol>
 <div class="howto"><b>Cómo leer este instructivo</b><p>Los números rojos de las capturas se explican en la lista numerada que está debajo de cada figura. Los recuadros <span class="tag tip">Consejo</span> <span class="tag note">Nota</span> y <span class="tag warn">Importante</span> destacan información que conviene no pasar por alto.</p></div></section>
 {body}</body></html>"""

@@ -408,7 +408,7 @@ public class MainActivity extends Activity {
 
     /** Lo que el portal puede pedirle al teléfono (window.AndroidBridge). */
     class Bridge {
-        @JavascriptInterface public String version() { return "1.3"; }
+        @JavascriptInterface public String version() { return "1.4"; }
         @JavascriptInterface public void log(String m) { Log.i(TAG, m); }
 
         /* Bluetooth */

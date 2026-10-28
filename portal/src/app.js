@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.5", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.6", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 import ES_OFFICIAL from "./es_official.json";
 import ES_FIELDS from "./es_fields.json";
@@ -4688,6 +4688,47 @@ matchMedia("(prefers-color-scheme:dark)").addEventListener("change", () => S.vie
 scheduleRefresh("all");
 probeNet(); mqEnsure();
 // Si ya hay un puerto autorizado, ofrecerlo; no se conecta solo sin que lo pidas.
+/* ───────────────────────── diálogos: Escape, foco y vuelta al lugar ─────────────────────────
+   Hasta acá los diálogos solo se cerraban con el mouse, y el tabulador se iba por detrás a la
+   pantalla de atrás. Esto vale para todos de una vez, sin tocar cada uno: se usa el cierre
+   propio de cada diálogo (un clic en el fondo), así se respeta la limpieza que hace cada uno
+   —por ejemplo apagar la cámara del lector de QR—. */
+const SEL_FOCO = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const dlgArriba = () => { const d = document.querySelectorAll("body > .modal"); return d.length ? d[d.length - 1] : null; };
+const focosDe = (d) => [...d.querySelectorAll(SEL_FOCO)].filter((x) => x.getClientRects().length);
+let focoPrevio = null;
+
+document.addEventListener("keydown", (e) => {
+  const d = dlgArriba(); if (!d) return;
+  if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation();
+    d.dispatchEvent(new MouseEvent("click", { bubbles: true })); /* cada diálogo sabe cómo cerrarse */
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const f = focosDe(d); if (!f.length) return;
+  const primero = f[0], ultimo = f[f.length - 1], aca = d.contains(document.activeElement);
+  if (e.shiftKey && (!aca || document.activeElement === primero)) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && (!aca || document.activeElement === ultimo)) { e.preventDefault(); primero.focus(); }
+}, true);
+
+/* Al abrirse un diálogo el foco entra solo; al cerrarse vuelve a donde estaba. */
+new MutationObserver((cambios) => {
+  for (const c of cambios) {
+    for (const n of c.addedNodes) {
+      if (n.nodeType !== 1 || !n.classList || !n.classList.contains("modal")) continue;
+      focoPrevio = document.activeElement;
+      requestAnimationFrame(() => { const f = focosDe(n); (f[0] || n).focus({ preventScroll: true }); });
+    }
+    for (const n of c.removedNodes) {
+      if (n.nodeType !== 1 || !n.classList || !n.classList.contains("modal")) continue;
+      if (dlgArriba()) continue; /* todavía queda otro abierto */
+      const v = focoPrevio; focoPrevio = null;
+      if (v && v.isConnected && v.getClientRects().length) requestAnimationFrame(() => v.focus({ preventScroll: true }));
+    }
+  }
+}).observe(document.body, { childList: true });
+
 window.__mesh = S;
 window.__ui = { setView, renderMain, startDemo };
 window.__conn = { connectNet, makeNetTransport, testNet, diagNode };

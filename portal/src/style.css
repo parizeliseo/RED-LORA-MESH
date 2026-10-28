@@ -433,7 +433,7 @@ details.chan .form{padding:0 14px 6px}
 @media(max-width:600px){.fitbtn{display:none}.mapstat{gap:4px}}
 /* ── v1.2: respuestas, reacciones, menú de mensaje ── */
 .bub{position:relative}
-.mmore{position:absolute;top:2px;right:4px;border:0;background:transparent;color:inherit;opacity:.45;font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer}
+.mmore{position:absolute;top:2px;right:4px;border:0;background:transparent;color:inherit;opacity:.45;font-size:16px;line-height:1;padding:2px 6px;border-radius:6px;cursor:pointer;min-width:28px;min-height:28px;display:inline-flex;align-items:center;justify-content:center}
 .mmore:hover,.mmore:focus-visible{opacity:1;background:rgba(127,127,127,.18)}
 .msg .bub{padding-right:28px}
 .bub b.who{cursor:pointer}.bub b.who:hover{text-decoration:underline}.avbtn{cursor:pointer;display:inline-flex}
@@ -482,7 +482,7 @@ details.chan .form{padding:0 14px 6px}
 .zlist{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:8px}
 .zrow{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .zrow small{color:var(--mut)}
-@media (max-width:600px){.msgmenu{left:8px!important;right:8px;min-width:0}.mme{font-size:24px;padding:6px}.mmi{padding:12px 10px;font-size:15px}.mmore{opacity:.7;font-size:18px}}
+@media (max-width:600px){.msgmenu{left:8px!important;right:8px;min-width:0}.mme{font-size:24px;padding:6px}.mmi{padding:12px 10px;font-size:15px}.mmore{opacity:.7;font-size:18px;min-width:40px;min-height:40px}}
 .modal.nsmodal,.modal.encima{z-index:55}#toasts{z-index:58}.msgmenu{z-index:62}
 .destit.otro{border-style:dashed;opacity:.9}.destit.otro b{font-weight:600;opacity:.85}
 .blkh.sub{font-size:12px;color:var(--mut);margin-top:6px;text-transform:none;letter-spacing:0}

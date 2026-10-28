@@ -5,6 +5,34 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.6 — 28 de octubre de 2026
+
+### Los diálogos se manejan con el teclado
+
+Ninguno de los cuadros de diálogo del portal se podía cerrar sin mouse, y mientras uno estaba
+abierto el tabulador se iba por detrás, a la pantalla de atrás. Ahora, para todos a la vez:
+
+- **Escape** cierra el que está arriba de todo, usando el cierre propio de cada uno —así se
+  respeta la limpieza que hace cada diálogo, por ejemplo apagar la cámara del lector de QR—.
+- Mientras está abierto, el tabulador da la vuelta adentro del diálogo y no se escapa.
+- Al abrirse, el foco entra solo; al cerrarse, vuelve al botón que lo abrió.
+
+Probado en la ficha de nodo y en los diálogos de conexión: el foco se queda adentro en las 25
+pulsaciones de prueba, contra 5 de 25 antes.
+
+### Se puede tocar con el dedo
+
+El botón de opciones de cada mensaje (`⋯`) medía 22 píxeles de alto, por debajo de los 24 que
+pide la norma de tamaño mínimo. Pasó a 28 en la computadora y 40 en el celular.
+
+### Revisado en pantallas chicas
+
+Se midieron las siete pantallas del portal a 280, 320, 360 y 768 píxeles de ancho: **ninguna
+desborda**. Las tablas anchas —telemetría y libro de guardia— se desplazan de costado dentro de
+su propio recuadro, como corresponde, sin arrastrar la página entera.
+
+---
+
 ## 1.5 — 28 de octubre de 2026
 
 ### Anda en cualquier navegador

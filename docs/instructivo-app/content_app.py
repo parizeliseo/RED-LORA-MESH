@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.5.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.6.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [

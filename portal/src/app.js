@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.2", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.5", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 import ES_OFFICIAL from "./es_official.json";
 import ES_FIELDS from "./es_fields.json";
@@ -93,6 +93,44 @@ const COMPASS = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
 const compass = (d) => COMPASS[Math.round(d / 45) % 8];
 const fmtDist = (km) => (km < 1 ? Math.round(km * 1000) + " m" : km.toFixed(km < 10 ? 2 : 1) + " km");
 const enumName = (E, n) => (E && E[n] !== undefined ? E[n] : String(n));
+/* Por qué la malla rechazó o no pudo entregar un paquete, dicho en castellano.
+   El firmware devuelve nombres como MAX_RETRANSMIT, que al usuario no le dicen nada. */
+const RUTEO = {
+  0: ["Entregado", "El destino confirmó que lo recibió."],
+  1: ["Sin ruta al destino", "Ningún nodo conocido llega hasta ese nodo. Probá acercarte o sumar un repetidor."],
+  2: ["El destino lo rechazó", "Llegó, pero el otro nodo contestó que no lo acepta."],
+  3: ["Se agotó el tiempo", "Nadie contestó a tiempo. Suele ser alcance justo o la red muy cargada."],
+  4: ["Sin interfaz de salida", "El nodo no tiene por dónde mandarlo: revisá que la radio esté habilitada."],
+  5: ["Se acabaron los reintentos", "Se reintentó el máximo de veces y no hubo confirmación. Señal débil o destino apagado."],
+  6: ["Canal desconocido", "El destino no tiene ese canal, o la clave no coincide."],
+  7: ["Mensaje demasiado grande", "No entra en un paquete. Mandalo más corto."],
+  8: ["El destino no respondió", "Se escuchó la red pero el nodo no contestó."],
+  9: ["Límite de uso del aire", "La ley de la banda obliga a esperar. Probá de nuevo en un rato."],
+  32: ["Pedido inválido", "El nodo no entendió el pedido."],
+  33: ["Sin autorización", "Falta la clave de administración de ese nodo."],
+  34: ["Falló el cifrado", "No se pudo cifrar o descifrar con la clave del destino."],
+  35: ["Clave pública desconocida", "Todavía no se conoce la clave del destino: esperá a escucharlo una vez."],
+  36: ["Sesión de administración vencida", "Volvé a conectarte al nodo y reintentá."],
+  37: ["Clave pública no autorizada", "Ese nodo no acepta administración con esta clave."],
+  38: ["Demasiados envíos seguidos", "El nodo está limitando el ritmo. Esperá unos segundos."],
+  39: ["No se pudo enviar la clave pública", "El intercambio de claves con el destino falló."],
+};
+const ruteoTitulo = (n) => (RUTEO[n] ? RUTEO[n][0] : enumName(Mesh.Routing_Error, n));
+const ruteoDetalle = (n) => (RUTEO[n] ? RUTEO[n][1] : "");
+const ruteoTexto = (n) => (RUTEO[n] ? RUTEO[n][0] + ". " + RUTEO[n][1] : enumName(Mesh.Routing_Error, n));
+/* Red de seguridad: un rechazo de la malla que nadie estaba esperando no debe
+   quedar como un objeto suelto en la consola; se cuenta y se muestra. */
+if (typeof window !== "undefined") {
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev && ev.reason;
+    if (!r || typeof r !== "object" || r.error === undefined) return;
+    ev.preventDefault();
+    try {
+      toast("La malla no pudo entregar un pedido: " + ruteoTexto(r.error), "err");
+      logEvent("err", r.id, "Pedido sin entregar: " + ruteoTexto(r.error));
+    } catch (e) { /* si todavía no arrancó la interfaz, no pasa nada */ }
+  });
+}
 
 /* ───────────────────────── estado ───────────────────────── */
 const S = {
@@ -730,7 +768,7 @@ async function dispatch(job) {
     S.okIds.add(id); setMsgState(id, "ok");
     if (S.okIds.size > 500) { const it = S.okIds.values(); for (let k = 0; k < 250; k++) S.okIds.delete(it.next().value); } /* solo sirve para casar la confirmación con el mensaje recién enviado: no hace falta guardar el historial entero */
   } catch (e) {
-    onSendFail(job, e && e.id, e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : String((e && e.message) || e));
+    onSendFail(job, e && e.id, e && e.error !== undefined ? ruteoTexto(e.error) : String((e && e.message) || e));
   }
 }
 function onSendFail(job, id, why) {
@@ -1486,7 +1524,7 @@ async function nodeAction(a, n) {
     if (a === "trace") { await S.device.traceRoute(n.num); toast("Traceroute enviado a " + nodeName(n) + "…"); }
     if (a === "pos") { await S.device.requestPosition(n.num); toast("Posición solicitada a " + nodeName(n)); }
     if (a === "del" && confirm(`¿Quitar a ${nodeName(n)} de la lista de nodos del módulo?`)) { await S.device.removeNodeByNum(n.num); S.nodes.delete(n.num); scheduleRefresh("nodes"); }
-  } catch (e) { toast("No se pudo completar: " + (e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err"); }
+  } catch (e) { toast("No se pudo completar: " + (e.error !== undefined ? ruteoTexto(e.error) : e.message || e), "err"); }
 }
 /* Escape para CSV. Además de las comillas, neutraliza el texto que Excel interpretaría como
    fórmula: un nombre de nodo o un mensaje llega de una radio ajena, y si empieza con = + - @
@@ -1529,9 +1567,11 @@ function renderLog() {
 }
 
 /* ───────────────────────── telemetría ───────────────────────── */
-const TEL_CATS = { device: "Dispositivo", env: "Ambiente / sensores", air: "Calidad del aire", power: "Energía (canales INA)", local: "Estadísticas del módulo", health: "Salud", host: "Host Linux", link: "Enlace de radio recibido", pos: "Posición / GPS", pax: "Contador de personas" };
-const VARIANT_CAT = { deviceMetrics: "device", environmentMetrics: "env", airQualityMetrics: "air", powerMetrics: "power", localStats: "local", healthMetrics: "health", hostMetrics: "host" };
-const REQ_LABEL = { deviceMetrics: "Dispositivo", environmentMetrics: "Ambiente", localStats: "Estadísticas locales", airQualityMetrics: "Calidad del aire", powerMetrics: "Energía" };
+const TEL_CATS = { device: "Dispositivo", env: "Ambiente / sensores", air: "Calidad del aire", power: "Energía (canales INA)", local: "Estadísticas del módulo", traf: "Tráfico de la malla", suelo: "Suelo y agua", health: "Salud", host: "Host Linux", link: "Enlace de radio recibido", pos: "Posición / GPS", pax: "Contador de personas" };
+/* Las nueve clases de telemetría del firmware. Faltaban las dos últimas: si un nodo las
+   mandaba, el portal tiraba el paquete sin decir nada. */
+const VARIANT_CAT = { deviceMetrics: "device", environmentMetrics: "env", airQualityMetrics: "air", powerMetrics: "power", localStats: "local", healthMetrics: "health", hostMetrics: "host", trafficManagementStats: "traf", soilWaterMetrics: "suelo" };
+const REQ_LABEL = { deviceMetrics: "Dispositivo", environmentMetrics: "Ambiente", localStats: "Estadísticas locales", airQualityMetrics: "Calidad del aire", powerMetrics: "Energía", trafficManagementStats: "Tráfico de la malla", soilWaterMetrics: "Suelo y agua" };
 // campo: [etiqueta, unidad]  (@t = duración, @b = bytes)
 const TF = {
   batteryLevel: ["Batería", "%"], voltage: ["Tensión", "V"], channelUtilization: ["Uso del canal", "%"], airUtilTx: ["Aire usado en TX", "%"], uptimeSeconds: ["Tiempo encendido", "@t"],
@@ -1543,6 +1583,47 @@ const TF = {
   snr: ["SNR", "dB"], rssi: ["RSSI", "dBm"], hops: ["Saltos", ""],
   lat: ["Latitud", "°"], lon: ["Longitud", "°"], altitude: ["Altitud", "m"], altitudeHae: ["Altitud elipsoidal", "m"], groundSpeed: ["Velocidad", "m/s"], groundTrack: ["Rumbo", "°"], satsInView: ["Satélites a la vista", ""], PDOP: ["PDOP", ""], HDOP: ["HDOP", ""], VDOP: ["VDOP", ""], gpsAccuracy: ["Precisión GPS", "mm"], precisionBits: ["Bits de precisión", ""], fixQuality: ["Calidad del fix", ""], fixType: ["Tipo de fix", ""], locationSource: ["Fuente de ubicación", ""], altitudeSource: ["Fuente de altitud", ""],
   wifi: ["Dispositivos WiFi", ""], ble: ["Dispositivos BLE", ""], heartBpm: ["Pulso", "bpm"], spO2: ["SpO₂", "%"],
+  /* ── Lo que el firmware también sabe mandar y antes se mostraba con el nombre crudo ── */
+  /* Tormentas eléctricas */
+  lightningStrikeCount1h: ["Rayos en la última hora", ""], lightningDistanceKm: ["Distancia del rayo", "km"],
+  /* Sol */
+  solarIrradiance: ["Irradiación solar", "W/m²"],
+  /* Suelo y agua */
+  soilPh: ["pH del suelo", ""], electricalConductivity: ["Conductividad eléctrica", "µS/cm"],
+  dissolvedOxygen: ["Oxígeno disuelto", "mg/L"], chemicalOxygenDemand: ["Demanda química de oxígeno", "mg/L"],
+  biochemicalOxygenDemand: ["Demanda bioquímica de oxígeno", "mg/L"],
+  /* Canales de energía 4 a 8 (los INA de más de tres canales) */
+  ch4Voltage: ["Tensión canal 4", "V"], ch4Current: ["Corriente canal 4", "mA"],
+  ch5Voltage: ["Tensión canal 5", "V"], ch5Current: ["Corriente canal 5", "mA"],
+  ch6Voltage: ["Tensión canal 6", "V"], ch6Current: ["Corriente canal 6", "mA"],
+  ch7Voltage: ["Tensión canal 7", "V"], ch7Current: ["Corriente canal 7", "mA"],
+  ch8Voltage: ["Tensión canal 8", "V"], ch8Current: ["Corriente canal 8", "mA"],
+  /* Entradas analógicas y sondas de temperatura de un cable */
+  adcVoltageCh0: ["Tensión ADC 0", "V"], adcVoltageCh1: ["Tensión ADC 1", "V"], adcVoltageCh2: ["Tensión ADC 2", "V"], adcVoltageCh3: ["Tensión ADC 3", "V"],
+  adcVoltageCh4: ["Tensión ADC 4", "V"], adcVoltageCh5: ["Tensión ADC 5", "V"], adcVoltageCh6: ["Tensión ADC 6", "V"], adcVoltageCh7: ["Tensión ADC 7", "V"],
+  oneWireTemperature: ["Temperatura de la sonda", "°C"],
+  oneWireTemperatureCh0: ["Temperatura sonda 0", "°C"], oneWireTemperatureCh1: ["Temperatura sonda 1", "°C"], oneWireTemperatureCh2: ["Temperatura sonda 2", "°C"], oneWireTemperatureCh3: ["Temperatura sonda 3", "°C"],
+  oneWireTemperatureCh4: ["Temperatura sonda 4", "°C"], oneWireTemperatureCh5: ["Temperatura sonda 5", "°C"], oneWireTemperatureCh6: ["Temperatura sonda 6", "°C"], oneWireTemperatureCh7: ["Temperatura sonda 7", "°C"],
+  /* Partículas en suspensión: cuántas hay de cada tamaño */
+  particles03um: ["Partículas ≥ 0,3 µm", "/0,1 L"], particles05um: ["Partículas ≥ 0,5 µm", "/0,1 L"], particles10um: ["Partículas ≥ 1 µm", "/0,1 L"],
+  particles25um: ["Partículas ≥ 2,5 µm", "/0,1 L"], particles40um: ["Partículas ≥ 4 µm", "/0,1 L"], particles50um: ["Partículas ≥ 5 µm", "/0,1 L"],
+  particles100um: ["Partículas ≥ 10 µm", "/0,1 L"], particlesTps: ["Tamaño típico de partícula", "µm"],
+  pm40Standard: ["PM4,0 (estándar)", "µg/m³"],
+  /* Gases y estado del sensor de aire */
+  co2Temperature: ["Temperatura del sensor de CO₂", "°C"], co2Humidity: ["Humedad del sensor de CO₂", "%"],
+  formFormaldehyde: ["Formaldehído", "µg/m³"], formTemperature: ["Temperatura del sensor de formaldehído", "°C"], formHumidity: ["Humedad del sensor de formaldehído", "%"],
+  pmTemperature: ["Temperatura del sensor de partículas", "°C"], pmHumidity: ["Humedad del sensor de partículas", "%"],
+  pmVocIdx: ["Índice de compuestos orgánicos (VOC)", ""], pmNoxIdx: ["Índice de óxidos de nitrógeno (NOx)", ""],
+  pmStatusFlags: ["Estado del sensor de partículas", ""],
+  lastCleaningTime: ["Última limpieza del sensor", "@t"], lastCleaningValid: ["Dato de limpieza válido", ""],
+  oneShotMode: ["Medición a pedido", ""], vocStateTime: ["Antigüedad del estado VOC", "@t"], vocStateValid: ["Estado VOC válido", ""], vocStateArray: ["Estado interno del sensor VOC", ""],
+  /* Tráfico de la malla: para entender por qué la red va lenta o se pierden paquetes */
+  numTxDropped: ["Envíos descartados", ""], noiseFloor: ["Piso de ruido", "dBm"],
+  packetsInspected: ["Paquetes revisados", ""], positionDedupDrops: ["Posiciones repetidas descartadas", ""],
+  nodeinfoCacheHits: ["Datos de nodo servidos de memoria", ""], rateLimitDrops: ["Descartados por límite de ritmo", ""],
+  unknownPacketDrops: ["Paquetes desconocidos descartados", ""], hopExhaustedPackets: ["Paquetes sin saltos restantes", ""],
+  routerHopsPreserved: ["Saltos ahorrados por repetidores", ""],
+  tuningCapPf: ["Capacitor de sintonía", "pF"],
 };
 const tfLabel = (k) => (TF[k] ? TF[k][0] : human(k));
 function fmtUp(s) {
@@ -1701,7 +1782,7 @@ function teleDetail() {
       const c = S.tui.hcat && t[S.tui.hcat] ? S.tui.hcat : hcats[0], hist = t[c].hist.slice().reverse();
       const keys = [...new Set(hist.slice(0, 400).flatMap((h) => Object.keys(h).filter((k) => k !== "t")))].slice(0, 12);
       cnt.textContent = hist.length + " muestras · se dibujan solo las visibles";
-      vtable(hb, hb, el("thead", {}, el("tr", {}, el("th", {}, "Hora"), keys.map((k) => el("th", {}, k)))), hist, (h) => el("tr", {}, el("td", {}, fDT(h.t)), keys.map((k) => el("td", {}, h[k] === undefined ? "—" : typeof h[k] === "number" ? fmtTele(k, h[k]) : String(h[k])))), keys.length + 1, 34);
+      vtable(hb, hb, el("thead", {}, el("tr", {}, el("th", {}, "Hora"), keys.map((k) => el("th", { title: k }, tfLabel(k))))), hist, (h) => el("tr", {}, el("td", {}, fDT(h.t)), keys.map((k) => el("td", {}, h[k] === undefined ? "—" : typeof h[k] === "number" ? fmtTele(k, h[k]) : String(h[k])))), keys.length + 1, 34);
     };
     wrap.append(el("div", { class: "card" }, el("div", { class: "chartbar" }, el("b", {}, "Historial de muestras"), el("select", { class: "inp", "aria-label": "Cuántas muestras mostrar", onchange: (e) => { S.tui.hcat = e.target.value; drawHist(); } }, hcats.map((c) => el("option", { value: c, selected: c === (S.tui.hcat || hcats[0]) }, TEL_CATS[c] || c))), cnt), hb));
     requestAnimationFrame(drawHist);
@@ -2733,9 +2814,19 @@ function topoMount(host) {
   let drag = null;
   svg.addEventListener("pointerdown", (e) => { if (e.target.closest(".tpn,.tpe")) return; drag = { x: e.clientX, y: e.clientY, tx: T.tx, ty: T.ty, moved: false }; svg.setPointerCapture(e.pointerId); });
   svg.addEventListener("pointermove", (e) => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true; T.tx = drag.tx + dx; T.ty = drag.ty + dy; apply(); });
-  svg.addEventListener("pointerup", () => { if (drag && !drag.moved && T.sel) { T.sel = null; topoDraw(); topoPanel(); } drag = null; });
+  svg.addEventListener("pointerup", () => { if (drag && !drag.moved && T.sel) { T.sel = null; topoMarcar(); topoPanel(); } drag = null; });
 }
 let tpTimer = 0; const topoSoon = () => { clearTimeout(tpTimer); tpTimer = setTimeout(() => { if (S.view === "topo") { topoDraw(); topoPanel(); } }, 700); };
+/* Elegir un nodo o un enlace solo cambia qué está resaltado: con cientos de nodos,
+   rehacer todo el dibujo tardaba un cuarto de segundo en cada clic. Ahora se marca en el sitio. */
+function topoMarcar() {
+  const g = $("#tpg"); if (!g) return; const sel = S.topo.sel;
+  for (const n of g.querySelectorAll(".tpn.sel")) n.classList.remove("sel");
+  for (const e of g.querySelectorAll(".tpe-g.sel")) e.classList.remove("sel");
+  if (!sel) return;
+  const q = sel.type === "node" ? '.tpn[data-id="' + sel.id + '"]' : '.tpe-g[data-k="' + CSS.escape(String(sel.id)) + '"]';
+  const el2 = g.querySelector(q); if (el2) el2.classList.add("sel");
+}
 function topoDraw() {
   const g = $("#tpg"); if (!g) return; const T = S.topo, M = topoModel(), L = topoLayout(M); T.model = M; T.lay = L;
   const kids = [];
@@ -2745,19 +2836,22 @@ function topoDraw() {
   for (const e of sorted) {
     const pa = pos.get(e.a), pb = pos.get(e.b); if (!pa || !pb) continue; const top = evOf(e)[0], age = (Date.now() - top.t) / 1000;
     const col = top.kind === "direct" ? snrColor(top.snr) : null, sl = T.sel && T.sel.type === "edge" && T.sel.id === e.k;
-    const cls = "tpe " + top.kind + (age > 21600 ? " old" : "") + (sl ? " sel" : "");
-    kids.push(sv("g", { class: "tpe-g", onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "edge", id: e.k }; topoDraw(); topoPanel(); } },
+    const cls = "tpe " + top.kind + (age > 21600 ? " old" : "");
+    kids.push(sv("g", { class: "tpe-g" + (sl ? " sel" : ""), "data-k": e.k, onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "edge", id: e.k }; topoMarcar(); topoPanel(); } },
       sv("line", { class: cls, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, style: col ? "stroke:" + col : null }),
       sv("line", { class: "tpe-hit", x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y }),
       top.kind === "infer" ? sv("text", { class: "tpelb", x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, "inferido") : null,
-      sl || top.kind === "direct" ? sv("text", { class: "tpelb", x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, top.snr != null ? top.snr.toFixed(1) + " dB" : "") : null));
+      top.kind !== "infer" ? sv("text", { class: "tpelb" + (top.kind === "direct" ? "" : " alseleccionar"), x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, top.snr != null ? top.snr.toFixed(1) + " dB" : "") : null));
   }
+  /* Con muchísimos nodos los nombres largos se pisan y no se leen; además son la mitad
+     del dibujo. Pasados los 120 se muestran solo al elegir el nodo, en el panel de al lado. */
+  const conNombres = M.nodes.size <= 120;
   for (const o of M.nodes.values()) {
     const p = pos.get(o.num); if (!p) continue; const n = o.n, me = o.num === S.me, st = nodeStatus(n), sl = T.sel && T.sel.type === "node" && T.sel.id === o.num, rr = me ? 22 : 17;
     const fill = `hsl(${(o.num * 47) % 360} 55% 42%)`, ring = ST_COL[st.k];
     const shape = o.cls === "relayed" || o.cls === "reported" ? sv("rect", { x: -rr, y: -rr, width: rr * 2, height: rr * 2, rx: 6, fill, stroke: ring, "stroke-width": 3 }) : o.cls === "mqtt" ? sv("rect", { x: -rr, y: -rr, width: rr * 2, height: rr * 2, rx: 6, fill, stroke: ring, "stroke-width": 3, "stroke-dasharray": "4 3" }) : sv("circle", { r: rr, fill, stroke: ring, "stroke-width": 3, "stroke-dasharray": o.cls === "unk" ? "2 3" : null });
-    kids.push(sv("g", { class: "tpn" + (sl ? " sel" : "") + (st.blink ? " blink" : ""), transform: `translate(${p.x} ${p.y})`, onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "node", id: o.num }; topoDraw(); topoPanel(); } },
-      sl ? sv("circle", { r: rr + 7, class: "tpselring" }) : null, shape, sv("text", { class: "tpsn", "text-anchor": "middle", y: 3.5 }, nodeShort(n).slice(0, 4)), sv("text", { class: "tpln", "text-anchor": "middle", y: rr + 14 }, nodeName(n).slice(0, 22) + (me ? " (vos)" : ""))));
+    kids.push(sv("g", { class: "tpn" + (sl ? " sel" : "") + (st.blink ? " blink" : ""), "data-id": o.num, transform: `translate(${p.x} ${p.y})`, onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "node", id: o.num }; topoMarcar(); topoPanel(); } },
+      sv("circle", { r: rr + 7, class: "tpselring" }), shape, sv("text", { class: "tpsn", "text-anchor": "middle", y: 3.5 }, nodeShort(n).slice(0, 4)), conNombres || me || sl ? sv("text", { class: "tpln", "text-anchor": "middle", y: rr + 14 }, nodeName(n).slice(0, 22) + (me ? " (vos)" : "")) : null));
   }
   g.replaceChildren(...kids);
   if (!T.fitted) { const host = T.host, W = host.clientWidth || 800, H = host.clientHeight || 600; let minX = -150, maxX = 150, minY = -150, maxY = 150; for (const p of pos.values()) { minX = Math.min(minX, p.x - 60); maxX = Math.max(maxX, p.x + 60); minY = Math.min(minY, p.y - 60); maxY = Math.max(maxY, p.y + 60); } const k = Math.min(1.2, Math.min(W / (maxX - minX), H / (maxY - minY))); T.k = k; T.tx = W / 2 - ((minX + maxX) / 2) * k; T.ty = H / 2 - ((minY + maxY) / 2) * k; T.fitted = true; }
@@ -3067,7 +3161,7 @@ async function applySettings(fn, reboots) {
     else toast("Guardado en el nodo", "ok");
   } catch (e) {
     S.expectReboot = false;
-    toast("No se pudo guardar: " + (e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err");
+    toast("No se pudo guardar: " + (e && e.error !== undefined ? ruteoTexto(e.error) : e.message || e), "err");
     throw e;
   }
 }
@@ -3305,7 +3399,7 @@ function btn(label, fn, kind = "ghost") {
   const b = el("button", { class: "btn " + (kind === "danger" ? "dangerbtn" : kind), onclick: async () => {
     if (S.demo) return toast("Modo demo: no se envió nada al nodo");
     if (!S.device || !ready()) return toast("Conectá el nodo primero", "err");
-    b.disabled = true; try { await fn(); } catch (e) { toast("Error: " + (e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : e.message || e), "err"); } finally { b.disabled = false; }
+    b.disabled = true; try { await fn(); } catch (e) { toast("Error: " + (e && e.error !== undefined ? ruteoTexto(e.error) : e.message || e), "err"); } finally { b.disabled = false; }
   } }, label);
   return b;
 }
@@ -4264,7 +4358,7 @@ async function gpsSend(f, manual) {
     upsertNode(S.me, { pos: { lat: f.lat, lon: f.lon, alt: f.alt != null ? f.alt : undefined, time: t } }); addTrackPoint(S.me, f.lat, f.lon, f.alt, Date.now());
     if (manual) toast("Posición enviada al nodo", "ok");
     gpsUpd(); return true;
-  } catch (e) { S.gps.busy = false; S.gps.err = "El nodo no aceptó la posición: " + (e && e.error !== undefined ? enumName(Mesh.Routing_Error, e.error) : (e && e.message) || e); if (manual) toast(S.gps.err, "err"); gpsUpd(); return false; }
+  } catch (e) { S.gps.busy = false; S.gps.err = "El nodo no aceptó la posición: " + (e && e.error !== undefined ? ruteoTexto(e.error) : (e && e.message) || e); if (manual) toast(S.gps.err, "err"); gpsUpd(); return false; }
 }
 window.addEventListener("ab:gps", (e) => { try { gpsFix(JSON.parse(e.detail[0])); } catch (er) {} });
 window.addEventListener("ab:gps-err", (e) => { S.gps.err = e.detail[0]; toast("GPS: " + e.detail[0], "err"); gpsUpd(); });
@@ -4475,7 +4569,7 @@ function qrSvg(text) {
 }
 function showChannelQR(url, names) {
   const svg = qrSvg(url);
-  const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && dlg.remove() },
+  const dlg = el("div", { class: "modal encima", onclick: (e) => e.target === dlg && dlg.remove() },
     el("div", { class: "mbox qrbox" }, el("h3", {}, "Código QR de mis canales"),
       el("small", { class: "muted" }, "Canales: " + names.join(", ") + ". Quien lo escanee recibe las claves: mostralo solo a gente de confianza."),
       el("div", { class: "qrwrap" }, svg),
@@ -4502,7 +4596,7 @@ function scanChannelQR(onText) {
   } });
   const stop = () => { done = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; };
   const finish = (t) => { stop(); dlg.remove(); onText(t); };
-  const dlg = el("div", { class: "modal", onclick: (e) => { if (e.target === dlg) { stop(); dlg.remove(); } } },
+  const dlg = el("div", { class: "modal encima", onclick: (e) => { if (e.target === dlg) { stop(); dlg.remove(); } } },
     el("div", { class: "mbox qrbox" }, el("h3", {}, "Escanear código QR de canales"), el("div", { class: "qrcam" }, video, el("i", { class: "qraim" })), msg,
       el("div", { class: "chips" }, el("button", { class: "btn ghost", onclick: () => fi.click() }, "Elegir una foto del QR…"), el("button", { class: "btn", onclick: () => { stop(); dlg.remove(); } }, "Cancelar")), fi));
   document.body.append(dlg);
@@ -4555,7 +4649,7 @@ function openOfflineDialog() {
           el("button", { class: "mini", disabled: !!dlRun, onclick: () => { Object.assign(o, { km: z.km, z0: z.z0, z1: z.z1, name: z.name }); dlg.remove(); dlZone({ lat: z.lat, lon: z.lon }, o, layers); } }, "Actualizar"),
           el("button", { class: "mini danger", onclick: () => { zonesSave(zonesGet().filter((x) => x.id !== z.id)); drawZones(); } }, "Quitar de la lista")))));
   };
-  const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && !dlRun && dlg.remove() },
+  const dlg = el("div", { class: "modal encima", onclick: (e) => e.target === dlg && !dlRun && dlg.remove() },
     el("div", { class: "mbox dlbox" }, el("h3", {}, "Guardar mapa para usar sin conexión"),
       el("small", { class: "muted" }, "Se descarga un cuadrado alrededor del centro del mapa (" + ctr.lat.toFixed(4) + ", " + ctr.lon.toFixed(4) + ") con las capas que tenés activas: " + layers.map((l) => l.n).join(", ") + ". Respetá las condiciones de uso de cada proveedor."),
       el("div", { class: "g2 dlg2" },

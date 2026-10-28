@@ -5,6 +5,54 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.5 — 28 de octubre de 2026
+
+### Anda en cualquier navegador
+
+La conexión por red usaba `AbortSignal.any` y `AbortSignal.timeout`, funciones recientes
+(`any` llegó en Chrome 116, Firefox 124 y Safari 17.4). Donde no existían —un Firefox ESR, un
+teléfono con el visor web sin actualizar— **conectarse por WiFi fallaba sin decir nada**: el
+portal se quedaba esperando. Ahora el portal las completa él mismo si faltan, y está probado
+en los tres motores (Chromium, Firefox y WebKit/Safari), incluso simulando que no existen.
+
+- Firefox y Safari se conectan al nodo por red sin ninguna limitación. USB y Bluetooth siguen
+  siendo solo de Chrome, Edge, Brave y Opera, porque esos navegadores no los exponen.
+- Si el navegador es tan viejo que no entiende el portal, ya **no queda una pantalla en
+  blanco**: a los pocos segundos aparece un cartel que explica qué pasa y qué actualizar, con
+  el nombre y la versión del navegador para poder reportarlo. También hay aviso si JavaScript
+  está apagado.
+- Reglas de estilo que un navegador viejo descarta enteras (`:has()`, `color-mix()`) tienen
+  ahora una versión simple antes. Una de ellas dejaba el panel de un nodo por debajo de los
+  avisos; otra pintaba de negro una banda de la topología.
+
+### La malla explica por qué no entregó
+
+Cuando la red rechazaba o no podía entregar algo, el motivo quedaba como un objeto mudo en la
+consola del navegador. Ahora sale un aviso y queda registrado, en castellano y con qué hacer:
+«Se acabaron los reintentos», «Sin ruta al destino», «Límite de uso del aire», «Clave pública
+desconocida» y los otros catorce motivos que informa el firmware.
+
+### Telemetría completa
+
+- El portal entendía siete de las **nueve clases de telemetría** del firmware. Las dos que
+  faltaban —**tráfico de la malla** y **suelo y agua**— se descartaban sin avisar: si un nodo
+  las mandaba, ese paquete se perdía. Ahora se reciben, se grafican y se pueden pedir.
+- Los **116 campos** de telemetría tienen nombre en castellano y unidad. Antes había 70 sin
+  traducir: rayos, irradiación solar, pH y conductividad del suelo, oxígeno disuelto, canales
+  de energía 4 a 8, entradas analógicas, sondas de temperatura, partículas por tamaño,
+  formaldehído, índices VOC y NOx, y las estadísticas de tráfico de la malla.
+- Las tablas de historial muestran los nombres traducidos en vez de `batteryLevel` o
+  `airUtilTx`, con el nombre técnico en el globo de ayuda.
+
+### La topología dejó de trabarse
+
+Elegir un nodo o un enlace rehacía el dibujo entero. Con cientos de nodos eso tardaba un cuarto
+de segundo en **cada clic**. Ahora se marca en el sitio: el trabajo bajó de unos 200 ms a 1,4 ms.
+Pasados los 120 nodos los nombres largos se muestran solo en el nodo elegido, porque encimados
+no se leían y eran la mitad del dibujo.
+
+---
+
 ## 1.4 — 23 de octubre de 2026
 
 ### Los gráficos muestran los huecos

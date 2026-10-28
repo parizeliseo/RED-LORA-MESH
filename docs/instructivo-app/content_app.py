@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.4.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.5.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [
@@ -192,6 +192,14 @@ ch("Emergencias y libro de guardia",
  ("p", "Todo lo que exportás se guarda en <b>Descargas/OPEN SOURCE PARIZ</b> y la app te ofrece abrirlo o compartirlo enseguida. <b>Imprimir / PDF</b> abre el servicio de impresión de Android, donde podés elegir <b>Guardar como PDF</b>."),
 )
 
+ch("Si el teléfono es viejo",
+ ("p", "La aplicación usa el visor web que trae Android (<i>Android System WebView</i>) para mostrar el portal. Ese visor se actualiza solo desde Google Play, aparte del sistema: por eso un teléfono con Android 7 u 8 bien actualizado anda sin problemas, y uno más nuevo pero sin actualizar puede fallar."),
+ ("ul", ["La aplicación pide <b>Android 7.0 o más nuevo</b>.",
+         "Si al abrirla queda <b>una pantalla en blanco</b>, esperá unos segundos: aparece un cartel que explica qué pasa y qué actualizar.",
+         "Para arreglarlo: Google Play → buscar <b>Android System WebView</b> → <i>Actualizar</i>; hacé lo mismo con <b>Chrome</b>. Después cerrá la aplicación del todo y volvé a abrirla."]),
+ ("note", "<b>Conectarse por WiFi anda en cualquier lado.</b> La aplicación le pide la red al teléfono, no al visor web, así que buscar el nodo y hablarle por WiFi funciona incluso en teléfonos donde el visor es viejo."),
+)
+
 ch("Solución de problemas",
  ("table", ["Problema", "Qué probar"], [
    ["No encuentra el nodo por Bluetooth.", "Revisá que el Bluetooth del teléfono esté encendido, que la app tenga <b>Dispositivos cercanos</b> (o <b>Ubicación</b> en Android 11 o anterior, con la ubicación activada) y que el nodo no esté conectado a otro celular. Probá <b>Mostrar todos</b>."],
@@ -199,6 +207,7 @@ ch("Solución de problemas",
    ["Conecté el cable y no pasa nada.", "Tiene que ser un cable <b>de datos</b> y un adaptador <b>OTG</b>. Abrí la app y tocá <b>USB (cable)</b>. Si Android preguntó por otra app, desenchufá y volvé a enchufar."],
    ["Por WiFi no encuentra el nodo.", "En <b>Redes a revisar</b> van los <b>tres primeros números</b> de tu red (192.168.1), no la dirección completa. Si escribís una dirección entera, la app te ofrece un botón para revisar la red completa."],
    ["Lo encuentra pero no conecta.", "Tocá <b>Probar conexión</b>: el mensaje te dice si no contesta nadie, si contesta pero no deja que el portal le hable, o si es un problema de certificado."],
+   ["Al abrir la aplicación queda una pantalla en blanco.", "El visor web del teléfono es demasiado viejo. Actualizá <b>Android System WebView</b> y <b>Chrome</b> desde Google Play y volvé a abrirla."],
    ["Se corta la conexión con la pantalla apagada.", "Ajustes del teléfono → Apps → OPEN SOURCE PARIZ → <b>Batería → Sin restricciones</b>. Y no cierres la app desde la lista de recientes."],
    ["No llegan los avisos.", "Revisá el permiso de <b>Notificaciones</b>, que estén activados en Ajustes → Sonidos y notificaciones, y que el canal no esté silenciado."],
    ["El nodo no toma la ubicación del celular.", "El nodo tiene GPS propio o posición fija: desactivalos en Configuración del dispositivo → Posición."],

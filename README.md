@@ -18,12 +18,13 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 | Archivo | Qué es |
 |---|---|
 | [`portal-lora-mesh.html`](publicado/portal-lora-mesh.html) | El portal para PC. Un solo archivo: se abre con doble clic. |
-| [`OPEN-SOURCE-PARIZ-app-1.4.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.4.apk) | La aplicación Android (7.0 o más nuevo). |
+| [`OPEN-SOURCE-PARIZ-app-1.5.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.5.apk) | La aplicación Android (7.0 o más nuevo). |
 | [`Instructivo-portal-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo del portal, con capturas. |
 | [`Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación. |
 
 **En la computadora:** descargá el `.html`, abrilo con **Chrome, Edge, Brave u Opera**
-(Firefox y Safari no permiten USB ni Bluetooth desde el navegador) y conectá el nodo.
+y conectá el nodo. Para conectarte **por red (WiFi o LAN)** sirve cualquier navegador,
+Firefox y Safari incluidos; lo único que esos dos no tienen es USB y Bluetooth.
 
 Qué cambió en cada versión: [`CHANGELOG.md`](CHANGELOG.md).
 

@@ -2,6 +2,75 @@
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OPEN SOURCE PARIZ</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M6 22l7-12 5 8 3-5 5 9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem("meshportal:theme");document.documentElement.dataset.theme=["light","dark","hc","night"].indexOf(t)>=0?t:"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script><style>/*CSS*/</style></head>
-<body><header id="topbar"></header><div id="alertbar" style="display:none"></div><div id="app"><aside id="side"></aside><main id="main"></main><aside id="right"></aside></div><div id="toasts"></div>
+<script>try{var t=localStorage.getItem("meshportal:theme");document.documentElement.dataset.theme=["light","dark","hc","night"].indexOf(t)>=0?t:"dark"}catch(e){document.documentElement.dataset.theme="dark"}</script>
+<script>
+/* Compatibilidad con navegadores y WebView de Android más viejos.
+   La conexión por red usa AbortSignal.timeout y AbortSignal.any, que son recientes
+   (any: Chrome 116, Firefox 124, Safari 17.4). Sin esto, en un Firefox ESR o en un
+   teléfono con el WebView sin actualizar, conectarse por WiFi falla sin explicación. */
+(function () {
+  var AS = window.AbortSignal;
+  if (!AS || !window.AbortController) return;
+  if (typeof AS.timeout !== "function") {
+    AS.timeout = function (ms) {
+      var c = new AbortController();
+      setTimeout(function () {
+        try { c.abort(new DOMException("Se agotó el tiempo de espera", "TimeoutError")); }
+        catch (e) { c.abort(); }
+      }, ms);
+      return c.signal;
+    };
+  }
+  if (typeof AS.any !== "function") {
+    AS.any = function (senales) {
+      var c = new AbortController(), lista = Array.prototype.slice.call(senales), i, s;
+      var corta = function (x) { return function () { try { c.abort(x.reason); } catch (e) { c.abort(); } }; };
+      for (i = 0; i < lista.length; i++) {
+        s = lista[i];
+        if (!s) continue;
+        if (s.aborted) { corta(s)(); break; }
+        s.addEventListener("abort", corta(s), { once: true });
+      }
+      return c.signal;
+    };
+  }
+})();
+</script><style>/*CSS*/</style></head>
+<body><noscript><div style="max-width:40em;margin:3em auto;padding:1.5em;border:1px solid #888;border-radius:10px;font:16px/1.5 system-ui,sans-serif;background:#fff;color:#111">
+<h1 style="margin-top:0;font-size:1.3em">Hace falta JavaScript</h1>
+<p>El portal funciona enteramente dentro del navegador, sin ningun servidor, y para eso necesita JavaScript.
+Activalo en la configuracion del navegador y volve a abrir el archivo.</p></div></noscript>
+<header id="topbar"></header><div id="alertbar" style="display:none"></div><div id="app"><aside id="side"></aside><main id="main"></main><aside id="right"></aside></div><div id="toasts"></div>
+<script>
+/* Escrito a proposito en JavaScript viejo (sin const ni flechas) para que lo entienda
+   cualquier navegador. Si el portal no arranca en unos segundos -porque el navegador es
+   demasiado viejo para leerlo- en vez de quedar una pantalla en blanco se explica que pasa. */
+(function () {
+  var listo = false;
+  window.addEventListener("load", function () { setTimeout(revisar, 2500); });
+  setTimeout(revisar, 6000);
+  function revisar() {
+    if (listo) return;
+    if (window.__mesh) { listo = true; return; }
+    var m = document.getElementById("main");
+    if (m && m.innerHTML.length > 80) { listo = true; return; }
+    listo = true;
+    var d = document.createElement("div");
+    d.setAttribute("style", "position:fixed;inset:0;z-index:99999;overflow:auto;background:#fff;color:#111;font:16px/1.6 system-ui,Arial,sans-serif;padding:2em");
+    d.innerHTML = '<div style="max-width:42em;margin:0 auto">' +
+      '<h1 style="font-size:1.4em;margin-top:0">Este navegador es demasiado viejo para el portal</h1>' +
+      '<p>El portal no lleg\u00f3 a arrancar. Casi siempre es porque el navegador no entiende el programa, no porque el archivo est\u00e9 da\u00f1ado.</p>' +
+      '<p><b>En una computadora:</b> abr\u00ed este mismo archivo con una versi\u00f3n actualizada de Google Chrome, Microsoft Edge, Brave, Opera o Firefox.</p>' +
+      '<p><b>En un celular:</b> actualiz\u00e1 <i>Android System WebView</i> y <i>Chrome</i> desde Google Play, y volv\u00e9 a abrir la aplicaci\u00f3n.</p>' +
+      '<p style="color:#555">Si el problema sigue despu\u00e9s de actualizar, anot\u00e1 qu\u00e9 navegador y qu\u00e9 versi\u00f3n us\u00e1s; eso alcanza para corregirlo.</p>' +
+      '<p id="pzdet" style="color:#555;font-size:.9em"></p></div>';
+    document.body.appendChild(d);
+    try { document.getElementById("pzdet").textContent = "Navegador: " + navigator.userAgent; } catch (e) {}
+  }
+  window.addEventListener("error", function (ev) {
+    if (listo || !ev || !ev.message) return;
+    if (/SyntaxError|Unexpected token|Invalid regular expression/i.test(String(ev.message))) revisar();
+  }, true);
+})();
+</script>
 <script>/*JS*/</script></body></html>

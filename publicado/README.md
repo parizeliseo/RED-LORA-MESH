@@ -3,7 +3,7 @@
 | Archivo | Para qué |
 |---|---|
 | `portal-lora-mesh.html` | Portal para computadora. Abrir con Chrome, Edge, Brave u Opera. |
-| `OPEN-SOURCE-PARIZ-app-1.6.apk` | Aplicación Android 7.0 o más nuevo. |
+| `OPEN-SOURCE-PARIZ-app-1.7.apk` | Aplicación Android 7.0 o más nuevo. |
 | `Instructivo-portal-OPEN-SOURCE-PARIZ.pdf` | Instructivo del portal. |
 | `Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf` | Instructivo de la aplicación. |
 

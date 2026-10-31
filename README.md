@@ -18,7 +18,7 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 | Archivo | Qué es |
 |---|---|
 | [`portal-lora-mesh.html`](publicado/portal-lora-mesh.html) | El portal para PC. Un solo archivo: se abre con doble clic. |
-| [`OPEN-SOURCE-PARIZ-app-1.6.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.6.apk) | La aplicación Android (7.0 o más nuevo). |
+| [`OPEN-SOURCE-PARIZ-app-1.7.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.7.apk) | La aplicación Android (7.0 o más nuevo). |
 | [`Instructivo-portal-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo del portal, con capturas. |
 | [`Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación. |
 

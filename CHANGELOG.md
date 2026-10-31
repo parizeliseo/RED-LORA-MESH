@@ -5,6 +5,52 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.7 — 31 de octubre de 2026
+
+### Buscador de mensajes
+
+El portal guarda hasta 4000 mensajes y no había forma de volver a encontrar algo dicho días
+atrás: solo quedaba desplazarse a mano. Ahora hay un buscador debajo de las pestañas de
+canales, que busca en **todas las conversaciones a la vez** —canales y mensajes directos—
+por el texto o por el nombre, la sigla o el identificador del nodo que lo mandó.
+
+- Sin acentos y sin mayúsculas: buscar `arbol` encuentra `ÁRBOL`.
+- Varias palabras exigen que estén **todas**, aunque aparezcan separadas.
+- Cada resultado dice quién, en qué canal y cuándo, con lo buscado resaltado.
+- Al tocar un resultado abre esa conversación y **salta hasta el mensaje**, que queda marcado
+  unos segundos. Funciona aunque el mensaje esté a cientos de posiciones de distancia: la
+  lista es virtual y se reposiciona hasta dar con él.
+
+### Parte de situación
+
+En *Novedades y guardia*, un botón arma en el momento un resumen del estado de la red en
+texto plano, pensado para **leerlo por radio**, copiarlo en un mensaje o guardarlo con el
+acta. Se elige el período, de la última hora a los últimos tres días, y sale con cuatro
+partes: la estación propia (batería, uso del canal, enlace con el módulo, Internet y MQTT);
+los nodos de la malla con el conteo y después nombre por nombre —primero los que tienen
+alerta sin atender, después los caídos, los que están en atención con el motivo y los activos
+con batería, señal y saltos—; el movimiento del período; y las observaciones del acta. Se
+copia al portapapeles o se descarga como `.txt`. Dentro de la aplicación Android el copiado
+usa el portapapeles del teléfono.
+
+### Arreglado
+
+- **El botón de opciones del mensaje quedaba 4 píxeles encima del texto**, en los cinco
+  mensajes de prueba y en todos los anchos. Es una regresión de la 1.6: al agrandar el botón
+  a 28 px (40 en el celular) el globo seguía reservando los 28 px del botón viejo. Ahora
+  reserva 36 y 48. Verificado a 1440, 768, 412, 360 y 320 px: cero superposiciones.
+- Las etiquetas `UTC` y `LOCAL` del reloj estaban en 10 px; pasaron a 11.
+
+### Verificación de esta versión
+
+38 pruebas automatizadas en verde (29 del portal, 6 de la aplicación y 3 del escaneo de red),
+incluidas las de MQTT contra un broker local; accesibilidad WCAG 2.1 AA sin incumplimientos en
+los cuatro temas y las catorce vistas; cero errores de JavaScript en Chromium, Firefox y
+WebKit; las nueve pantallas revisadas en los cuatro temas a 1440, 768, 390, 360, 320 y 280 px
+sin desbordes, texto cortado ni elementos encimados; y la APK firmada con la clave de siempre.
+
+---
+
 ## 1.6 — 28 de octubre de 2026
 
 ### Los diálogos se manejan con el teclado

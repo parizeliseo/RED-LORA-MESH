@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.6.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.7.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [
@@ -91,6 +91,17 @@ ch("Mensajes",
  ("note", "Las respuestas y las reacciones viajan con el formato estándar de la red, así que también se ven en las demás aplicaciones LoRa Mesh."),
  ("h3", "Si un mensaje no sale"),
  ("p", "El portal reintenta solo: a los 60 segundos y otra vez a los 60. Si aun así no se entrega, queda marcado como <b>NO ENTREGADO</b> con un botón <b>Reenviar mensaje</b>. Un mensaje a un canal se da por enviado cuando el nodo lo transmite; uno privado espera la confirmación del destinatario."),
+)
+
+ch("Buscar y parte de situación",
+ ("h3", "Buscar en los mensajes"),
+ ("p", "Debajo de las pestañas de canales hay un cuadro de búsqueda. Busca en <b>todas las conversaciones a la vez</b> —canales y mensajes directos— por el texto o por el nombre del nodo que lo mandó. No hace falta poner acentos ni mayúsculas."),
+ ("ul", ["Si ponés varias palabras, muestra los mensajes que las tengan todas.",
+         "Cada resultado dice quién, en qué canal y cuándo, con lo buscado resaltado.",
+         "Al tocar un resultado la aplicación abre esa conversación y salta hasta el mensaje, que queda marcado unos segundos."]),
+ ("h3", "Parte de situación"),
+ ("p", "En <b>Novedades y guardia</b>, el botón <b>Parte de situación</b> arma un resumen del estado de la red en texto, listo para leer por radio o pegar en un mensaje. Informa tu propia estación, el estado de cada nodo de la malla (activos, en atención, caídos, con alerta) y el movimiento del período elegido."),
+ ("note", "El botón <b>Copiar</b> usa el portapapeles del teléfono, así que podés pegarlo directo en WhatsApp, en un correo o en un mensaje de la propia malla."),
 )
 
 ch("Avisos del celular",

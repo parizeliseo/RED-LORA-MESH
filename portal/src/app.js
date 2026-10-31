@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.6", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.7", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 import ES_OFFICIAL from "./es_official.json";
 import ES_FIELDS from "./es_fields.json";
@@ -137,7 +137,7 @@ const S = {
   view: "messages", sub: "radio.lora", conv: "ch0",
   status: ST.DeviceDisconnected, demo: false, device: null, transport: null,
   me: 0, nodes: new Map(), channels: Array(8).fill(null), cfg: {}, mod: {}, meta: null,
-  msgs: [], logs: [], unread: {}, search: "", logPause: false,
+  msgs: [], logs: [], unread: {}, search: "", msgq: "", msgFoco: null, logPause: false,
   form: null, expectReboot: false, reconnecting: false,
   map: { cx: 0, cy: 0, mpp: 100, sel: null, fitted: false },
   pktInfo: new Map(), tele: new Map(), tracks: new Map(), neigh: new Map(), waypoints: new Map(), myInfo: null, metaObj: null,
@@ -1341,6 +1341,11 @@ function viewMessages(m) {
     el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Mensajes: " + convTitle(S.conv)), el("small", { class: "muted" }, S.conv.startsWith("dm") ? "Mensaje directo" : "Canal compartido con todos los nodos que usen esta clave")),
       el("div", { class: "phr" }, el("button", { class: "btn ghost", id: "sndbtn", title: "Sonido de mensajes nuevos", onclick: (e) => { sndSave({ on: !sndCfg().on }); e.target.textContent = sndCfg().on ? "🔔 Sonido: sí" : "🔕 Sonido: no"; if (sndCfg().on) playEvent("ch", true); } }, sndCfg().on ? "🔔 Sonido: sí" : "🔕 Sonido: no"), el("button", { class: "btn ghost", id: "schedbadge", onclick: openSchedDialog }, schedBadgeText()), el("button", { class: "btn ghost", onclick: openPrintDialog }, "Imprimir / PDF"))),
     el("div", { id: "chtabs", class: "chtabs" }),
+    el("div", { class: "msgbsq" },
+      el("input", { id: "msgbuscar", class: "inp", type: "search", value: S.msgq, "aria-label": "Buscar en todos los mensajes",
+        placeholder: "Buscar en todos los mensajes (texto o nombre del nodo)…",
+        oninput: (e) => { S.msgq = e.target.value; renderMsgList(true); },
+        onkeydown: (e) => { if (e.key === "Escape" && S.msgq) { e.stopPropagation(); cerrarBusqueda(); } } })),
     el("div", { id: "msglist", class: "msglist" }),
     el("div", { id: "route", class: "route" }),
     el("div", { id: "replybar", class: "replybar", style: "display:none" }),
@@ -1362,11 +1367,96 @@ function msgEl(x) {
   const left = x.st === "retry" ? Math.max(0, Math.ceil(((x.retryAt || 0) - Date.now()) / 1000)) : 0;
   const stTxt = x.mine ? (x.st === "pending" ? "enviando…" : x.st === "ok" ? (x.dm ? "entregado ✓" : "enviado ✓") : x.st === "retry" ? "no se pudo enviar" + (x.why ? " (" + x.why + ")" : "") + " · reintento " + ((x.job && x.job.tries || 0) + 1) + " de " + MAX_TRIES + " en " + left + " s" : "NO ENTREGADO" + (x.why ? ": " + x.why : "")) : "";
   const more = el("button", { class: "mmore", title: "Responder, reaccionar, copiar…", "aria-label": "Opciones del mensaje", onclick: (e) => { e.stopPropagation(); msgMenu(x, e.currentTarget); } }, "⋯");
-  return el("div", { class: "msg" + (x.mine ? " mine" : "") + (isAlertText(x.text) ? " alertmsg" : "") }, x.mine ? null : el("span", { class: "avbtn", title: "Ver detalle del nodo", onclick: () => openNodeSheet(x.from) }, avatar(n, 32)), el("div", { class: "bub" }, more, x.mine ? null : el("b", { class: "who", onclick: () => openNodeSheet(x.from) }, nodeName(n)), x.replyTo ? quoteEl(x) : null, el("div", { class: "tx" }, x.text), reactsEl(x), el("small", {}, hhmm(x.t) + (stTxt ? " · " + stTxt : "") + (x.mine ? upLabel(x) : x.mqtt ? " · vía MQTT" : "")), x.mine && x.st === "fail" ? el("div", { class: "rsnd" }, el("span", {}, "No fue entregado."), el("button", { class: "mini", onclick: () => resendNow(x, true) }, "Reenviar mensaje")) : null, x.mine && x.st === "retry" ? el("div", { class: "rsnd" }, el("button", { class: "mini", onclick: () => resendNow(x, false) }, "Reintentar ahora")) : null));
+  return el("div", { class: "msg" + (x.mine ? " mine" : "") + (isAlertText(x.text) ? " alertmsg" : "") + (S.msgFoco != null && x.id === S.msgFoco ? " hallado" : "") }, x.mine ? null : el("span", { class: "avbtn", title: "Ver detalle del nodo", onclick: () => openNodeSheet(x.from) }, avatar(n, 32)), el("div", { class: "bub" }, more, x.mine ? null : el("b", { class: "who", onclick: () => openNodeSheet(x.from) }, nodeName(n)), x.replyTo ? quoteEl(x) : null, el("div", { class: "tx" }, x.text), reactsEl(x), el("small", {}, hhmm(x.t) + (stTxt ? " · " + stTxt : "") + (x.mine ? upLabel(x) : x.mqtt ? " · vía MQTT" : "")), x.mine && x.st === "fail" ? el("div", { class: "rsnd" }, el("span", {}, "No fue entregado."), el("button", { class: "mini", onclick: () => resendNow(x, true) }, "Reenviar mensaje")) : null, x.mine && x.st === "retry" ? el("div", { class: "rsnd" }, el("button", { class: "mini", onclick: () => resendNow(x, false) }, "Reintentar ahora")) : null));
+}
+/* ───────────────────────── buscar en los mensajes ─────────────────────────
+   Se guardan hasta 4000 mensajes: sin buscador no hay forma de volver a encontrar algo que
+   se dijo. Busca en todas las conversaciones a la vez, no solo en la que está abierta. */
+const sinTildes = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function buscarMsgs(q) {
+  const t = sinTildes(q).trim(); if (t.length < 2) return [];
+  const partes = t.split(/\s+/);
+  const hits = [];
+  for (let i = S.msgs.length - 1; i >= 0 && hits.length < 300; i--) {
+    const m = S.msgs[i];
+    const quien = m.mine ? "yo vos propio" : sinTildes(nameOf(m.from) + " " + nodeId(m.from));
+    const heno = sinTildes(m.text) + " " + quien + " " + sinTildes(convTitle(convOf(m)));
+    if (partes.every((p) => heno.includes(p))) hits.push(m);
+  }
+  return hits;
+}
+/* Resalta en el texto lo que se buscó, sin usar HTML: se arma con nodos de texto. */
+function resaltar(texto, q) {
+  const cont = el("span", { class: "rs" });
+  const base = sinTildes(texto), partes = [...new Set(sinTildes(q).trim().split(/\s+/).filter((x) => x.length > 1))];
+  const marcas = [];
+  for (const p of partes) { let i = base.indexOf(p); while (i >= 0) { marcas.push([i, i + p.length]); i = base.indexOf(p, i + p.length); } }
+  marcas.sort((a, b) => a[0] - b[0]);
+  let pos = 0;
+  for (const [a2, b2] of marcas) {
+    if (a2 < pos) continue;
+    if (a2 > pos) cont.append(document.createTextNode(texto.slice(pos, a2)));
+    cont.append(el("mark", {}, texto.slice(a2, b2)));
+    pos = b2;
+  }
+  cont.append(document.createTextNode(texto.slice(pos)));
+  return cont;
+}
+function renderBusqueda() {
+  const box = $("#msglist"); if (!box) return false;
+  const q = S.msgq.trim();
+  if (q.length < 2) return false;
+  box._vl = null; box._src = null;
+  const hits = buscarMsgs(q);
+  const cab = el("div", { class: "bsqcab" },
+    el("b", {}, hits.length === 0 ? "Sin resultados" : hits.length + (hits.length === 1 ? " mensaje encontrado" : " mensajes encontrados") + (hits.length >= 300 ? " (se muestran los 300 más nuevos)" : "")),
+    el("button", { class: "mini", onclick: () => cerrarBusqueda() }, "Volver a la conversación"));
+  const items = hits.map((m) => el("button", {
+    class: "bsqit", onclick: () => irAlMensaje(m),
+  },
+    el("div", { class: "bsqtop" },
+      el("b", {}, m.mine ? "Vos" : nameOf(m.from)),
+      el("span", { class: "bsqdonde" }, convTitle(convOf(m))),
+      el("small", { class: "muted" }, fDT(m.t))),
+    el("div", { class: "bsqtx" }, resaltar(m.text || "", q))));
+  box.replaceChildren(cab, ...(items.length ? items : [el("div", { class: "empty" }, "Ningún mensaje contiene “" + q + "”. Probá con una palabra sola o con el nombre del nodo.")]));
+  return true;
+}
+function cerrarBusqueda() {
+  S.msgq = ""; const c = $("#msgbuscar"); if (c) c.value = "";
+  renderMsgList(true);
+}
+function irAlMensaje(m) {
+  const conv = convOf(m);
+  S.msgq = ""; const c = $("#msgbuscar"); if (c) c.value = "";
+  S.msgFoco = m.id;
+  if (S.conv !== conv) { S.conv = conv; S.unread[conv] = 0; setView("messages"); }
+  else { renderMsgList(false); renderTabs(); }
+  requestAnimationFrame(() => enfocarMensaje());
+}
+/* Lleva la lista hasta el mensaje buscado y lo deja marcado un rato. */
+function enfocarMensaje(intento) {
+  const box = $("#msglist"); if (!box || !box._vl || S.msgFoco == null) return;
+  const src = box._src; if (!src) return;
+  const i = src.items.findIndex((it) => it.m && it.m.id === S.msgFoco);
+  if (i < 0) { S.msgFoco = null; return; }
+  box._vl.irA(i, true);
+  const e = box.querySelector(".msg.hallado");
+  if (e) { /* ya está dibujado: lo dejamos bien centrado */
+    e.scrollIntoView({ block: "center", behavior: "auto" });
+    setTimeout(() => { S.msgFoco = null; const x = box.querySelector(".msg.hallado"); if (x) x.classList.remove("hallado"); }, 4000);
+    return;
+  }
+  /* las alturas de la lista son estimadas: puede hacer falta más de un intento para caer justo */
+  const n = (intento || 0) + 1;
+  if (n < 12) requestAnimationFrame(() => enfocarMensaje(n));
+  else S.msgFoco = null;
 }
 function renderMsgList(scrollEnd) {
   const box = $("#msglist"); if (!box) return;
-  const atEnd = scrollEnd || box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+  if (renderBusqueda()) return; /* mientras se busca, la lista muestra los resultados */
+  /* si venimos de un resultado de búsqueda no hay que irse al final: el mensaje está más arriba */
+  const atEnd = S.msgFoco == null && (scrollEnd || box.scrollTop + box.clientHeight >= box.scrollHeight - 40);
   const list = S.msgs.filter((x) => convOf(x) === S.conv);
   if (!list.length) { box._vl = null; box.replaceChildren(el("div", { class: "empty" }, icon("M3 13l3-8h12l3 8v6H3z M3 13h5l1 3h6l1-3h5"), "Todavía no hay mensajes")); return; }
   const pv = box._src; /* si solo llegaron mensajes al final, se reaprovecha lo ya armado */
@@ -1407,6 +1497,13 @@ function vlist(box, o) { /* lista de alturas variables (mensajes) */
   box.addEventListener("scroll", () => { if (stick && box.scrollTop + box.clientHeight < box.scrollHeight - 30) stick = false; sched(); });
   const api = {
     set(list, toEnd) { items = list; cache.clear(); recalc(); A = B = -1; stick = !!toEnd; box.replaceChildren(); draw(true); draw(false); if (stick) { box.scrollTop = box.scrollHeight; requestAnimationFrame(() => { draw(false); if (stick) box.scrollTop = box.scrollHeight; }); } },
+    irA(i, centrado) { /* saltar a un elemento concreto: lo usa el buscador */
+      if (i < 0 || i >= items.length) return;
+      stick = false;
+      const vh = box.clientHeight || 600;
+      box.scrollTop = Math.max(0, offs[i] - (centrado ? Math.max(0, (vh - hOf(items[i])) / 2) : 12));
+      draw(true);
+    },
     rendered: () => cache.size, count: () => items.length };
   return api;
 }
@@ -2941,6 +3038,93 @@ function gdEntries() {
 function gdNodeNames() { const set = new Set(); for (const e of S.events) if (e.name) set.add(e.name); for (const m of S.msgs) set.add(m.mine ? "Este nodo" : m.fn || nameOf(m.from)); return [...set].sort((a, b) => a.localeCompare(b)); }
 let gdUpd = null;
 function updGuardia() { if (gdUpd) gdUpd(); }
+/* ───────────────────────── parte de situación ─────────────────────────
+   Un resumen corto del estado de la red, armado para leerse por radio o pegarse en un
+   informe: quién está, quién no, con qué batería y qué pasó en el período. */
+function parteTexto(horas) {
+  const ahora = Date.now(), desde = ahora - horas * 3600000, c = opsCfg(), meta = gdMeta();
+  const L = [];
+  const nodos = [...S.nodes.values()];
+  const clasif = { ok: [], warn: [], down: [], unk: [], panic: [] };
+  for (const n of nodos) clasif[nodeStatus(n).k].push(n);
+  const nom = (n) => nodeName(n) + " (" + nodeId(n.num) + ")";
+
+  L.push("PARTE DE SITUACIÓN — RED LORA MESH");
+  if (meta.unit) L.push("Puesto: " + meta.unit);
+  if (meta.chief) L.push("Operador: " + meta.chief);
+  L.push("Fecha y hora: " + fDT(ahora) + "   (UTC " + fUTC(ahora) + ")");
+  L.push("Período informado: últimas " + horas + (horas === 1 ? " hora" : " horas"));
+  L.push("");
+
+  L.push("1. ESTACIÓN PROPIA");
+  const yo = S.nodes.get(S.me);
+  if (yo) {
+    L.push("   Nodo: " + nom(yo));
+    const d = (S.tele.get(S.me) || {}).device;
+    if (d && d.last) {
+      if (d.last.batteryLevel != null) L.push("   Batería: " + fmtTele("batteryLevel", d.last.batteryLevel) + (d.last.voltage ? " · " + fmtTele("voltage", d.last.voltage) : ""));
+      if (d.last.channelUtilization != null) L.push("   Uso del canal: " + fmtTele("channelUtilization", d.last.channelUtilization) + (d.last.airUtilTx != null ? " · aire en TX " + fmtTele("airUtilTx", d.last.airUtilTx) : ""));
+    }
+  } else L.push("   Sin nodo conectado.");
+  const conex = S.demo ? "modo demo (sin nodo real)" : S.conn ? (CONN_NAME[S.conn.type] || S.conn.type) + (S.conn.address ? " · " + S.conn.address : "") : "sin conexión";
+  L.push("   Enlace con el módulo: " + conex);
+  const mqCon = S.mq && S.mq.srv ? S.mq.srv.filter((x) => x && x.st === "on").length : 0;
+  const mqPed = S.mq && S.mq.cfg ? S.mq.cfg.servers.filter((x) => x.enabled && (x.url || x.host)).length : 0;
+  L.push("   Internet: " + (navigator.onLine ? "sí" : "NO") + " · MQTT: " + mqCon + " de " + mqPed + " servidores conectados");
+  L.push("");
+
+  L.push("2. NODOS DE LA MALLA (" + nodos.length + " conocidos)");
+  L.push("   Activos: " + clasif.ok.length + " · en atención: " + clasif.warn.length + " · caídos: " + clasif.down.length + " · sin datos: " + clasif.unk.length + " · con alerta: " + clasif.panic.length);
+  const fila = (n, extra) => "     - " + nom(n) + (n.lastHeard ? " · visto " + ago(n.lastHeard) : " · nunca escuchado") + (extra ? " · " + extra : "");
+  if (clasif.panic.length) { L.push("   CON ALERTA DE PÁNICO SIN ATENDER:"); for (const n of clasif.panic) L.push(fila(n, (S.alerts.get(n.num) || {}).text || "")); }
+  if (clasif.down.length) { L.push("   CAÍDOS (sin señal hace más de " + c.downMin + " min):"); for (const n of clasif.down) L.push(fila(n)); }
+  if (clasif.warn.length) { L.push("   EN ATENCIÓN:"); for (const n of clasif.warn) L.push(fila(n, nodeStatus(n).why.join(" · "))); }
+  if (clasif.ok.length) { L.push("   ACTIVOS:"); for (const n of clasif.ok) L.push(fila(n, [n.battery != null ? (n.battery > 100 ? "alimentado (USB/cargador)" : "batería " + Math.round(n.battery) + " %") : "", n.snr != null ? "SNR " + n.snr.toFixed(1) + " dB" : "", n.hops != null ? (n.hops === 0 ? "directo" : n.hops + " salto" + (n.hops === 1 ? "" : "s")) : ""].filter(Boolean).join(" · "))); }
+  if (clasif.unk.length) { L.push("   SIN DATOS SUFICIENTES:"); for (const n of clasif.unk) L.push(fila(n)); }
+  L.push("");
+
+  L.push("3. MOVIMIENTO EN EL PERÍODO");
+  const msgs = S.msgs.filter((x) => x.t >= desde);
+  L.push("   Mensajes: " + msgs.length + " (" + msgs.filter((x) => x.mine).length + " propios, " + msgs.filter((x) => !x.mine).length + " recibidos)");
+  const fallados = msgs.filter((x) => x.mine && (x.st === "retry" || x.st === "fail"));
+  if (fallados.length) L.push("   Mensajes propios sin confirmar: " + fallados.length);
+  const evs = (S.logs || []).filter((x) => x.t >= desde);
+  const porTipo = {};
+  for (const e of evs) porTipo[e.kind] = (porTipo[e.kind] || 0) + 1;
+  const etiq = { panic: "alertas de pánico", down: "caídas de nodo", up: "recuperaciones", lowbatt: "avisos de batería baja", weak: "avisos de señal débil", ack: "alertas atendidas", err: "errores" };
+  const linea = Object.entries(porTipo).filter(([k]) => etiq[k]).map(([k, v]) => v + " " + etiq[k]);
+  L.push("   Novedades registradas: " + (linea.length ? linea.join(", ") : "ninguna"));
+  L.push("");
+
+  if (meta.notes) { L.push("4. OBSERVACIONES"); for (const r of String(meta.notes).split("\n")) L.push("   " + r); L.push(""); }
+  L.push("— Generado por OPEN SOURCE PARIZ, portal v" + PORTAL_VER + " —");
+  return L.join("\n");
+}
+function abrirParte() {
+  let horas = 8;
+  const area = el("textarea", { class: "inp parte", rows: 20, readonly: true, "aria-label": "Texto del parte de situación" });
+  const pintar = () => { area.value = parteTexto(horas); };
+  const sel = el("select", { class: "inp", "aria-label": "Período del parte", onchange: (e) => { horas = +e.target.value; pintar(); } },
+    [[1, "Última hora"], [8, "Últimas 8 horas"], [12, "Últimas 12 horas"], [24, "Últimas 24 horas"], [72, "Últimos 3 días"]].map(([v, t]) => el("option", { value: v, selected: v === horas }, t)));
+  pintar();
+  const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && dlg.remove() },
+    el("div", { class: "mbox partebox" },
+      el("h3", {}, "Parte de situación"),
+      el("p", { class: "muted" }, "Un resumen del estado de la red listo para leer por radio, copiar en un mensaje o guardar con el acta."),
+      el("div", { class: "g2" }, el("label", { class: "gdl" }, "Período", sel)),
+      area,
+      el("div", { class: "mfoot" },
+        el("button", { class: "btn", onclick: () => { copiarTexto(area.value); } }, "Copiar"),
+        el("button", { class: "btn ghost", onclick: () => download("parte-situacion-" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "") + ".txt", new Blob(["﻿" + area.value], { type: "text/plain;charset=utf-8" })) }, "Descargar .txt"),
+        el("button", { class: "btn ghost", onclick: () => dlg.remove() }, "Cerrar"))));
+  document.body.append(dlg);
+}
+/* Copiar que también anda dentro de la app de Android. */
+function copiarTexto(t) {
+  const ok = () => toast("Parte copiado: ya lo podés pegar donde lo necesites", "ok");
+  if (IS_APP && window.AndroidBridge && window.AndroidBridge.copyText) { window.AndroidBridge.copyText(t); ok(); return; }
+  navigator.clipboard.writeText(t).then(ok, () => toast("El navegador no dejó copiar al portapapeles. Seleccioná el texto a mano y copialo con Ctrl+C.", "err"));
+}
 function viewGuardia(m) {
   const meta = gdMeta(), box = el("div", { class: "gdview" }); m.append(box);
   const fromIn = el("input", { class: "inp", type: "datetime-local", onchange: (e) => { gdF.preset = "custom"; gdF.from = e.target.value ? +new Date(e.target.value) : 0; sync(); upd(); } });
@@ -2964,7 +3148,7 @@ function viewGuardia(m) {
   };
   gdUpd = upd;
   box.append(el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Novedades y Libro de Guardia"), el("small", { class: "muted" }, "Filtrá mensajes y eventos críticos por horario y exportalos para el acta o el libro de guardia.")),
-      el("div", { class: "phr" }, el("button", { class: "btn ghost", onclick: () => gdExport("csv", list) }, "CSV"), el("button", { class: "btn ghost", onclick: () => gdExport("xlsx", list) }, "⬇ Excel (.xlsx)"), el("button", { class: "btn", onclick: () => gdExport("pdf", list) }, "🖨 PDF / Imprimir"))),
+      el("div", { class: "phr" }, el("button", { class: "btn acc", onclick: abrirParte }, "📋 Parte de situación"), el("button", { class: "btn ghost", onclick: () => gdExport("csv", list) }, "CSV"), el("button", { class: "btn ghost", onclick: () => gdExport("xlsx", list) }, "⬇ Excel (.xlsx)"), el("button", { class: "btn", onclick: () => gdExport("pdf", list) }, "🖨 PDF / Imprimir"))),
     el("div", { class: "gdpanel" },
       el("div", { class: "gdcol" }, el("div", { class: "lsec" }, "Rango de horas"), preset, el("div", { class: "g2" }, el("label", { class: "gdl" }, "Desde", fromIn), el("label", { class: "gdl" }, "Hasta", toIn)),
         el("div", { class: "lsec" }, "Orden"), ck("Más recientes primero", () => gdF.desc, (v) => (gdF.desc = v))),

@@ -1,0 +1,16 @@
+﻿OPEN SOURCE PARIZ - Sistema LoRa Mesh para Windows
+
+Este programa es software libre, publicado bajo la Licencia Pública General de GNU, versión 3 o posterior (GPL-3.0). Podés usarlo, copiarlo, estudiarlo, modificarlo y redistribuirlo. Si lo redistribuís, tenés que mantener esta misma licencia y entregar también el código fuente.
+
+El código fuente completo está en:
+https://github.com/parizeliseo/RED-LORA-MESH
+
+El texto completo de la licencia, en inglés, se instala junto con el programa (archivo LICENSE).
+
+SIN GARANTÍA
+El programa se entrega tal cual, sin garantía de ningún tipo, ni explícita ni implícita, incluidas las de funcionamiento o de aptitud para un fin determinado.
+
+NO REEMPLAZA A LOS SERVICIOS DE EMERGENCIA
+Es una herramienta de comunicación por radio. Ante una emergencia, comunicate también por los canales oficiales.
+
+Este programa no está asociado ni respaldado por ningún organismo.

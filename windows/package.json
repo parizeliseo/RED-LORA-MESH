@@ -1,0 +1,114 @@
+{
+  "name": "open-source-pariz-escritorio",
+  "productName": "OPEN SOURCE PARIZ",
+  "version": "1.8.0",
+  "description": "Sistema LoRa Mesh para Windows: mensajes, mapa, topología, telemetría y guardia, por USB, Bluetooth o red, sin depender del navegador.",
+  "author": "Ramón Eliseo Pariz",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/parizeliseo/RED-LORA-MESH",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "portal": "node build/portal.mjs",
+    "dist": "node build/portal.mjs && node build/construir.js"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0",
+    "resedit": "^3.1.0"
+  },
+  "dependencies": {
+    "ws": "^8.22.1"
+  },
+  "build": {
+    "appId": "ar.pariz.portal.escritorio",
+    "productName": "OPEN SOURCE PARIZ",
+    "copyright": "© 2026 Ramón Eliseo Pariz · GPL-3.0",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "app/index.html",
+      "build/icon.ico",
+      "build/icon.png",
+      "build/tray.ico",
+      "build/tray.png",
+      "build/tray@2x.png",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "recursos/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf",
+        "to": "Instructivo-portal-OPEN-SOURCE-PARIZ.pdf"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      }
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "es",
+      "es-419",
+      "en-US"
+    ],
+    "afterPack": "build/afterPack.js",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "OPEN-SOURCE-PARIZ-Windows-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "OPEN SOURCE PARIZ",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "license": "build/licencia.txt",
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "language": "3082",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "uninstallDisplayName": "OPEN SOURCE PARIZ",
+      "artifactName": "OPEN-SOURCE-PARIZ-Windows-${version}-instalador.${ext}"
+    },
+    "compression": "maximum",
+    "publish": null
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parizeliseo/RED-LORA-MESH.git",
+    "directory": "windows"
+  }
+}

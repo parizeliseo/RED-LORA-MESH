@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.7.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.8.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [
@@ -209,6 +209,15 @@ ch("Si el teléfono es viejo",
          "Si al abrirla queda <b>una pantalla en blanco</b>, esperá unos segundos: aparece un cartel que explica qué pasa y qué actualizar.",
          "Para arreglarlo: Google Play → buscar <b>Android System WebView</b> → <i>Actualizar</i>; hacé lo mismo con <b>Chrome</b>. Después cerrá la aplicación del todo y volvé a abrirla."]),
  ("note", "<b>Conectarse por WiFi anda en cualquier lado.</b> La aplicación le pide la red al teléfono, no al visor web, así que buscar el nodo y hablarle por WiFi funciona incluso en teléfonos donde el visor es viejo."),
+)
+
+ch("Cambiar de teléfono o pasar a la PC",
+ ("p", "La aplicación guarda los mensajes, los nodos, los servidores MQTT, los favoritos y el libro de guardia en el propio teléfono. Para llevarlos a otro teléfono, al portal en una computadora o a la aplicación de Windows, usá la <b>copia de seguridad del portal</b>:"),
+ ("steps", [
+   "En este teléfono: <b>Ajustes → Copia de seguridad del portal → Guardar copia</b>. El archivo .json queda en <i>Descargas/OPEN SOURCE PARIZ</i>.",
+   "Pasá ese archivo al otro equipo (por cable, Drive o correo).",
+   "En el otro equipo: el mismo lugar → <b>Restaurar desde una copia</b> y elegí el archivo."]),
+ ("note", "La configuración del nodo no viaja en esta copia porque vive en el nodo; tiene su propio respaldo en <i>Administración y respaldo</i>."),
 )
 
 ch("Solución de problemas",

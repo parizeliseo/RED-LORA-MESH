@@ -5,6 +5,74 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.8 — 31 de octubre de 2026
+
+### Aplicación para Windows
+
+El portal ahora también es un **programa propio para Windows 10 y 11** (64 bits), con instalador
+y versión portable. Es el mismo portal con todas sus funciones, pero no depende del navegador:
+
+- **USB y Bluetooth siempre**, con selectores propios. El de USB muestra los puertos COM, marca
+  como *probable nodo* los chips de las placas conocidas (CP210x de la Heltec V3, CH340/CH9102,
+  ESP32 con USB propio, nRF52) y, si hay uno solo, ya lo deja elegido. El de Bluetooth se va
+  llenando a medida que aparecen nodos, y el PIN de emparejamiento lo pide la aplicación.
+- **Red hecha por el programa**, no por la página: el escaneo prueba los puertos de verdad. En
+  las pruebas encontró los cinco nodos simulados en 4 segundos —en el navegador tardaba 23 y
+  dejaba afuera al que no daba permiso CORS— y la conexión por WiFi no depende de ese permiso.
+- **Puente MQTT incluido**: ya no hace falta instalar Python. Usa el mismo contrato que
+  `puente-mqtt.py`, escucha solo en esta computadora, solo reenvía a puertos MQTT y rechaza
+  pedidos de páginas de Internet. Probado contra un servidor MQTT por TCP: conexión, suscripción
+  y mensaje de ida y vuelta.
+- **Bandeja del sistema**: cerrar la ventana no cierra el programa, que sigue recibiendo y
+  avisando. Desde la bandeja: Emergencias, Parte de situación, estado del puente, *Iniciar con
+  Windows* (arranca oculto en la bandeja) y Salir.
+- **Avisos de Windows** que traen la ventana al tocarlos y abren la conversación; las alertas
+  quedan en pantalla y hacen parpadear el ícono en la barra de tareas. Los mensajes sin leer se
+  ven en el título: *(3) OPEN SOURCE PARIZ*.
+- **Imprimir o guardar como PDF** directo, menú con atajos (Ctrl+1 a Ctrl+6, Ctrl+P para el
+  parte), el instructivo incluido para leer sin Internet y un registro de diagnóstico.
+- Seguridad: la ventana corre aislada, los enlaces externos se abren en el navegador de Windows y
+  los fusibles de Electron impiden usar el programa como Node suelto o pasarle opciones de
+  depuración. Verificado: aunque se le pida `--inspect`, no abre el depurador.
+
+Se arma desde Linux sin Wine (el `.exe` recibe su ícono y sus datos con un editor de recursos en
+JavaScript) y **GitHub lo arma y lo prueba en una computadora con Windows en cada cambio**: abre
+el programa, revisa las nueve pantallas, el puente, la red y el selector USB, y lo instala y
+desinstala en silencio. El instalador queda para descargar en la pestaña *Actions*.
+
+### Copia de seguridad del portal
+
+Todo lo que guarda el portal vive en cada navegador o cada aplicación por separado: al cambiar de
+PC o pasar a la aplicación de Windows se empezaba de cero. Ahora *Ajustes → Copia de seguridad
+del portal* guarda un `.json` con los mensajes, los nodos, la telemetría, los servidores MQTT,
+las conexiones, los favoritos, el libro de guardia, los parámetros de emergencia, los mensajes
+programados, los sonidos y las zonas del mapa, y lo restaura en otro lado. Muestra de cuándo es la
+copia y qué trae antes de reemplazar nada, y rechaza un archivo que no sea una copia. Probado de
+ida y vuelta, con acentos, y comprobado que no se lleva nada ajeno al portal.
+
+### Pantallas
+
+- **Nodos en el celular**: los filtros ocupaban toda la pantalla y la lista quedaba abajo, fuera
+  de la vista: se entraba a *Nodos* y no se veía ningún nodo. En pantallas angostas los filtros se
+  pliegan ahora detrás de un botón **Filtros**, que cuenta los que están puestos.
+- La **estrella de favorito** medía 22 px de alto y el botón **Leyenda** del mapa 17 px: los dos
+  pasaron a 28, el mínimo cómodo para el dedo.
+- En el celular, los botones de zoom del mapa **tapaban el crédito de OpenStreetMap**; ahora va a
+  su izquierda, entero.
+
+### Corrección sobre versiones anteriores
+
+En la revisión visual de la 1.7, en la de pantallas chicas de la 1.6 y en la medición de fluidez
+de la 1.5, las pantallas de **Nodos, Mapa y Ajustes no se midieron de verdad**: las pruebas les
+pedían esas pantallas al portal con nombres que no existen (`nodos`, `mapa`, `ajustes` en vez de
+`nodes`, `map`, `settings`), y el portal mostraba Mensajes en su lugar. La auditoría de
+accesibilidad sí usaba los nombres correctos, así que esa sigue valiendo. Ya están corregidas las
+pruebas y medidas las tres pantallas; de ahí salieron los arreglos de arriba. En particular, el
+mapa no se abre en 33 ms como decía la 1.5: con 600 nodos le lleva unos 70 ms de dibujo (unos 35 ms
+más que con 50 nodos); con redes de tamaño normal queda al ras.
+
+---
+
 ## 1.7 — 31 de octubre de 2026
 
 ### Buscador de mensajes

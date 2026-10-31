@@ -15,8 +15,10 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.7", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.8", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
+const IS_DESK = typeof window !== "undefined" && !!window.__escritorio; /* aplicación de Windows: red, puente MQTT, avisos e impresión los da el programa */
+const ESC = () => (IS_DESK ? window.__escritorio : null);
 import ES_OFFICIAL from "./es_official.json";
 import ES_FIELDS from "./es_fields.json";
 
@@ -465,7 +467,7 @@ async function rawFetch(url, opts, ms, sig) {
 }
 /* ── En la app, el teléfono hace los pedidos de red por nosotros. El visor web pone trabas para
    hablarle a equipos de la red local desde una página https; pidiéndoselo a Android no las hay. ── */
-const NAT = () => (IS_APP && window.__nativeNet) || null;
+const NAT = () => ((IS_APP || IS_DESK) && window.__nativeNet) || null;
 /* Transporte HTTP equivalente al de la librería, pero por la vía nativa. */
 function makeAppTransport(url) {
   const n = NAT();
@@ -1062,6 +1064,7 @@ function scheduleRefresh(kind) {
     raf = 0;
     const k = new Set(pending); pending.clear();
     const all = k.has("all");
+    if (IS_DESK) noLeidosDesk(); /* va antes del return de "all", si no ese camino no avisaba */
     if (all) { renderSide(); renderRight(); renderMain(); renderTopbar(); updRoute(); alertBar(); return; }
     if ((k.has("nodes") || k.has("tele")) && S.view === "topo") topoSoon();
     if ((k.has("nodes") || k.has("tele")) && nsNum != null) nsRedraw();
@@ -1076,6 +1079,11 @@ function scheduleRefresh(kind) {
     if (k.has("logs") && S.view === "console") renderLog();
     if (k.has("tele") && !teleDeb) teleDeb = setTimeout(() => { teleDeb = 0; if (S.view === "tele") renderTeleBody(); if (S.view === "map") drawMap(); }, 1500);
   });
+}
+let noLeidosAnt = -1;
+function noLeidosDesk() { /* en Windows: "(3) OPEN SOURCE PARIZ" en el título y en la bandeja */
+  const n = Object.values(S.unread || {}).reduce((a, b) => a + (b || 0), 0);
+  if (n !== noLeidosAnt) { noLeidosAnt = n; try { ESC().noLeidos(n); } catch (e) {} }
 }
 
 
@@ -1157,7 +1165,7 @@ function setView(v, sub) {
   document.body.classList.remove("drawer");
   S.view = v; if (sub) S.sub = sub; else if (DEFSUB[v] && !GROUPS[v].items.some((i) => i[0] === S.sub)) S.sub = DEFSUB[v];
   S.form = null;
-  if (v === "messages") { S.unread[S.conv] = 0; clearNotif(S.conv); }
+  if (v === "messages") { S.unread[S.conv] = 0; clearNotif(S.conv); if (IS_DESK) noLeidosDesk(); }
   closeMsgMenu();
   scheduleRefresh("all");
 }
@@ -1219,7 +1227,7 @@ function renderSide() {
     el("div", { class: "stats" },
       el("div", {}, icon(IC.chip), "Firmware: ", el("b", {}, (S.meta && S.meta.firmwareVersion) || "—")),
       S.metaObj && S.metaObj.hwModel ? el("div", {}, icon(IC.usb), "Hardware: ", el("b", {}, String(S.metaObj.hwModel))) : null,
-      el("div", { title: "Versión de este archivo del portal" }, icon(IC.chip), "Portal: ", el("b", {}, PORTAL_VER + (IS_APP ? " (app)" : "")), el("small", { class: "muted" }, " · " + PORTAL_BUILD))))); 
+      el("div", { title: "Versión de este archivo del portal" }, icon(IC.chip), "Portal: ", el("b", {}, PORTAL_VER + (IS_APP ? " (app)" : IS_DESK ? " (Windows)" : "")), el("small", { class: "muted" }, " · " + PORTAL_BUILD))))); 
   // Tema
   const curTh = document.documentElement.dataset.theme || "dark";
   side.append(blk("apariencia", "Apariencia", "",
@@ -1297,7 +1305,7 @@ function a11ySweep(root) {
 }
 function renderMain() {
   const m = $("#main"); m.replaceChildren(); S.form = isCfgView() ? null : S.form;
-  if (!connected() && !(S.view === "settings" && (S.sub === "portal.net" || S.sub === "portal.snd" || S.sub === "portal.ops" || S.sub === "portal.perf" || S.sub === "portal.gps")) && S.view !== "emerg" && S.view !== "guardia" && S.view !== "topo") return m.append(connectScreen());
+  if (!connected() && !(S.view === "settings" && (S.sub === "portal.net" || S.sub === "portal.snd" || S.sub === "portal.ops" || S.sub === "portal.perf" || S.sub === "portal.copia" || S.sub === "portal.gps")) && S.view !== "emerg" && S.view !== "guardia" && S.view !== "topo") return m.append(connectScreen());
   if (S.status === ST.DeviceConfiguring || S.status === ST.DeviceConnecting) m.append(el("div", { class: "banner" }, "Descargando la configuración del nodo… puede tardar unos segundos con muchos nodos."));
   ({ messages: viewMessages, nodes: viewNodes, tele: viewTele, map: viewMap, settings: viewSettings, radio: viewSettings, device: viewSettings, module: viewSettings, console: viewConsole, emerg: viewEmerg, guardia: viewGuardia, topo: viewTopo }[S.view] || viewMessages)(m);
   a11ySweep(m);
@@ -1328,7 +1336,7 @@ function connectScreen() {
       serialOK && !btOK ? el("div", { class: "warn" }, "Bluetooth web no está disponible en este navegador. En Brave activá brave://flags/#brave-web-bluetooth-api y reiniciá; en Chrome o Edge ya viene activo.") : null,
       (serialOK || btOK) && !ctx ? el("div", { class: "warn" }, "La página no está en un contexto seguro. Abrila desde un servidor local: ejecutá “python -m http.server 8000” en la carpeta del archivo y entrá a http://localhost:8000") : null,
       el("ul", { class: "tips" },
-        el("li", {}, IS_APP ? "USB: conectá el nodo con un adaptador OTG y un cable de datos (muchos son solo de carga). Android pregunta si abre esta app: tocá Aceptar." : "USB: cerrá cualquier otra app que use el puerto y usá un cable de datos (muchos son solo de carga)."),
+        el("li", {}, IS_DESK ? "USB: usá un cable de datos (muchos son solo de carga) y cerrá cualquier otro programa que use el puerto. Si al enchufar el nodo no aparece ningún puerto COM, a Windows le falta el controlador del chip USB: CP210x (Silicon Labs) para Heltec V3, o CH340 / CH9102 para otras placas." : IS_APP ? "USB: conectá el nodo con un adaptador OTG y un cable de datos (muchos son solo de carga). Android pregunta si abre esta app: tocá Aceptar." : "USB: cerrá cualquier otra app que use el puerto y usá un cable de datos (muchos son solo de carga)."),
         el("li", {}, "Bluetooth: activalo en el nodo y desconectalo de otros equipos; el PIN aparece en la pantalla del nodo."),
         el("li", {}, "Red: el nodo necesita el WiFi (o Ethernet) configurado; usá su dirección IP, y " + (IS_APP ? "el celular" : "la PC") + " tiene que estar en la misma red."),
         el("li", {}, "Todo funciona sin internet: nada se envía a ningún servidor.")),
@@ -1573,6 +1581,7 @@ function drawNodeFilters() {
   const tog = (k) => nf.roles.includes(k) ? nf.roles.filter((x) => x !== k) : [...nf.roles, k];
   const mins = el("select", { class: "inp nfmin", "aria-label": "Minutos sin señal para considerar un nodo desconectado", title: "Tiempo sin recibir señal del nodo para considerarlo desconectado", onchange: (e) => set({ mins: +e.target.value }) }, ...NF_MINS.map(([v, l]) => el("option", { value: v, selected: nf.mins === v }, l)));
   const na = nfActive();
+  const tg = $("#nftoggle"); if (tg) { tg.textContent = na ? "Filtros (" + na + ")" : "Filtros"; tg.classList.toggle("acc", !!na); }
   box.replaceChildren(
     seg("Alcance", "scope", [["all", "Todos"], ["direct", "Solo directos", "Escuchados por radio sin saltos intermedios"], ["mqtt", "Solo por MQTT", "Nodos que llegan por un servidor MQTT"]]),
     el("div", { class: "nfg" }, el("small", { class: "nft" }, "Estado"), el("div", { class: "nfseg" }, ...[["all", "Todos"], ["on", "Conectados"], ["off", "Desconectados"]].map(([v, l]) => el("button", { class: nf.state === v ? "on" : "", onclick: () => set({ state: v }) }, l))), nf.state !== "all" ? el("span", { class: "nfafter" }, el("small", {}, nf.state === "off" ? "sin señal hace más de" : "con señal en los últimos"), mins) : null),
@@ -1584,6 +1593,7 @@ function viewNodes(m) {
   m.append(el("div", { class: "nodesview" },
     el("header", { class: "ph" }, el("h2", { id: "nodeh" }, `Nodos (${S.nodes.size})`),
       el("div", { class: "phr" }, el("input", { class: "inp", type: "search", placeholder: "Buscar…", value: S.search, oninput: (e) => { S.search = e.target.value; renderNodesTable(); } }),
+        el("button", { class: "btn ghost nftoggle", id: "nftoggle", "aria-expanded": "false", "aria-controls": "nodef", onclick: (e) => { const b = $("#nodef"), on = !b.classList.contains("abierto"); b.classList.toggle("abierto", on); e.currentTarget.setAttribute("aria-expanded", on ? "true" : "false"); } }, "Filtros"),
         el("button", { class: "btn ghost", onclick: exportNodes }, "Exportar CSV"))),
     el("div", { class: "nodef", id: "nodef" }),
     el("div", { class: "tblwrap", id: "nodetbl" })));
@@ -1647,6 +1657,7 @@ function download(name, blob) {
 }
 function printFrame(f) { /* imprime el contenido de un iframe; en el celular usa el servicio de impresión de Android (permite "Guardar como PDF") */
   if (IS_APP) { const d = f.contentDocument; window.AndroidBridge.printHtml("<!doctype html>" + d.documentElement.outerHTML, d.title || "OPEN SOURCE PARIZ"); return; }
+  if (IS_DESK && ESC().imprimir) { const d = f.contentDocument; ESC().imprimir("<!doctype html>" + d.documentElement.outerHTML, d.title || "OPEN SOURCE PARIZ"); return; }
   f.contentWindow.focus(); f.contentWindow.print();
 }
 
@@ -2384,6 +2395,7 @@ const gmapsDir = (lat, lon, from) => "https://www.google.com/maps/dir/?api=1&des
 function openExternal(url) {
   if (S.net && S.net.online === false) toast("Sin Internet: Google Maps se abrirá cuando vuelva la conexión");
   if (IS_APP) { window.AndroidBridge.openUrl(url); return; }
+  if (IS_DESK && ESC().abrirEnlace) { ESC().abrirEnlace(url); return; }
   window.open(url, "_blank", "noopener");
 }
 async function downloadArea() {
@@ -3248,7 +3260,7 @@ const GROUPS = {
   radio: { title: "Configuración de radio", items: [["radio.lora", "LoRa"], ["radio.channels", "Canales"], ["radio.security", "Seguridad"]] },
   device: { title: "Configuración del dispositivo", items: [["dev.user", "Usuario"], ["dev.device", "Dispositivo"], ["dev.position", "Posición"], ["dev.power", "Consumo"], ["dev.network", "Conexión de red"], ["dev.display", "Pantalla"], ["dev.bluetooth", "Bluetooth"]] },
   module: { title: "Configuración del módulo", items: [["mod.mqtt", "MQTT"], ["mod.serial", "Conexión serial"], ["mod.externalNotification", "Notificación externa"], ["mod.storeForward", "Store & Forward"], ["mod.rangeTest", "Test de alcance"], ["mod.telemetry", "Telemetría"], ["mod.cannedMessage", "Mensajes predefinidos"], ["mod.audio", "Audio"], ["mod.remoteHardware", "Hardware remoto"], ["mod.neighborInfo", "Información de vecinos"], ["mod.ambientLighting", "Luz ambiental"], ["mod.detectionSensor", "Sensor de presencia"], ["mod.paxcounter", "Contador de personas"], ["mod.trafficManagement", "Gestión de tráfico"], ["mod.statusmessage", "Mensaje de estado"], ["mod.tak", "TAK"], ["mod.meshBeacon", "Baliza de malla"]] },
-  settings: { title: "Ajustes", items: [["portal.net", "Internet y MQTT"], ["portal.ops", "Modo operativo y semáforo"], ["portal.perf", "Rendimiento y limpieza"], ["portal.snd", "Sonidos y notificaciones"], ["portal.gps", IS_APP ? "GPS del celular" : "Ubicación de esta PC"], ["sys", "Administración y respaldo"]] },
+  settings: { title: "Ajustes", items: [["portal.net", "Internet y MQTT"], ["portal.ops", "Modo operativo y semáforo"], ["portal.perf", "Rendimiento y limpieza"], ["portal.copia", "Copia de seguridad del portal"], ["portal.snd", "Sonidos y notificaciones"], ["portal.gps", IS_APP ? "GPS del celular" : "Ubicación de esta PC"], ["sys", "Administración y respaldo"]] },
 };
 const CFG_DESC = { lora: C.Config_LoRaConfigSchema, security: C.Config_SecurityConfigSchema, device: C.Config_DeviceConfigSchema, position: C.Config_PositionConfigSchema, power: C.Config_PowerConfigSchema, network: C.Config_NetworkConfigSchema, display: C.Config_DisplayConfigSchema, bluetooth: C.Config_BluetoothConfigSchema };
 const MOD_DESC = { mqtt: M.ModuleConfig_MQTTConfigSchema, serial: M.ModuleConfig_SerialConfigSchema, externalNotification: M.ModuleConfig_ExternalNotificationConfigSchema, storeForward: M.ModuleConfig_StoreForwardConfigSchema, rangeTest: M.ModuleConfig_RangeTestConfigSchema, telemetry: M.ModuleConfig_TelemetryConfigSchema, cannedMessage: M.ModuleConfig_CannedMessageConfigSchema, audio: M.ModuleConfig_AudioConfigSchema, remoteHardware: M.ModuleConfig_RemoteHardwareConfigSchema, neighborInfo: M.ModuleConfig_NeighborInfoConfigSchema, ambientLighting: M.ModuleConfig_AmbientLightingConfigSchema, detectionSensor: M.ModuleConfig_DetectionSensorConfigSchema, paxcounter: M.ModuleConfig_PaxcounterConfigSchema, trafficManagement: M.ModuleConfig_TrafficManagementConfigSchema, statusmessage: M.ModuleConfig_StatusMessageConfigSchema, tak: M.ModuleConfig_TAKConfigSchema, meshBeacon: M.ModuleConfig_MeshBeaconConfigSchema };
@@ -3289,6 +3301,7 @@ function viewSettings(m) {
   if (sub === "portal.snd") return viewSound(body);
   if (sub === "portal.ops") return viewOps(body);
   if (sub === "portal.perf") return viewPerf(body);
+  if (sub === "portal.copia") return viewCopia(body);
   if (sub === "portal.gps") return viewGps(body);
   let key, desc, value, kind, title, subtitle, only, hide;
   if (sub === "dev.user") {
@@ -3663,6 +3676,65 @@ function perfTexto(d) {
     "Equipo: " + d.nucleos + " núcleos · " + d.memoriaGB + " GB de memoria", "Navegador: " + d.navegador);
   return L.join("\n");
 }
+/* ───────────────────────── copia de seguridad del portal ─────────────────────────
+   Todo lo que guarda el portal (mensajes, nodos, telemetría, servidores MQTT, conexiones,
+   favoritos, guardia, emergencias, sonidos, zonas del mapa) vive en el almacenamiento de
+   cada navegador o de cada aplicación, por separado. Esta copia permite llevarlo de un lado al
+   otro: del portal en Chrome a la aplicación de Windows, o de una PC a otra. No incluye los
+   mosaicos de mapa descargados (se vuelven a bajar) ni nada que esté guardado en el nodo. */
+const COPIA_VER = 1;
+function copiaClaves() { const k = []; for (let i = 0; i < localStorage.length; i++) { const x = localStorage.key(i); if (x && x.startsWith("meshportal:")) k.push(x); } return k.sort(); }
+function copiaArmar() {
+  const datos = {}; for (const k of copiaClaves()) datos[k] = localStorage.getItem(k);
+  return { tipo: "copia-portal-lora-mesh", version: COPIA_VER, portal: PORTAL_VER, creada: new Date().toISOString(),
+    origen: IS_DESK ? "aplicación de Windows" : IS_APP ? "aplicación de Android" : "navegador", claves: Object.keys(datos).length, datos };
+}
+function copiaResumen(c) {
+  let msgs = 0, nodos = 0;
+  for (const [k, v] of Object.entries(c.datos || {})) {
+    try { if (/:msgs$/.test(k)) msgs += JSON.parse(v).length; else if (/:nodes$/.test(k)) nodos = Math.max(nodos, JSON.parse(v).length); } catch (e) {}
+  }
+  return { msgs, nodos, claves: Object.keys(c.datos || {}).length };
+}
+function copiaGuardar() {
+  const c = copiaArmar(), r = copiaResumen(c);
+  const nombre = "copia-portal-lora-mesh-" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "") + ".json";
+  download(nombre, new Blob([JSON.stringify(c)], { type: "application/json" }));
+  toast("Copia guardada: " + r.msgs + " mensajes, " + r.nodos + " nodos y " + r.claves + " grupos de ajustes", "ok");
+}
+async function copiaRestaurar(file) {
+  let c;
+  try { c = JSON.parse(await file.text()); } catch (e) { toast("Ese archivo no es una copia del portal: no se pudo leer.", "err"); return; }
+  if (!c || c.tipo !== "copia-portal-lora-mesh" || !c.datos || typeof c.datos !== "object") { toast("Ese archivo no es una copia del portal. Elegí el .json que guardó el botón «Guardar copia».", "err"); return; }
+  const claves = Object.keys(c.datos).filter((k) => k.startsWith("meshportal:") && typeof c.datos[k] === "string");
+  if (!claves.length) { toast("La copia está vacía.", "err"); return; }
+  const r = copiaResumen(c);
+  const cuando = c.creada ? new Date(c.creada).toLocaleString("es-AR") : "fecha desconocida";
+  if (!confirm("¿Restaurar esta copia?\n\nCreada: " + cuando + (c.origen ? " · desde " + c.origen : "") + "\nTrae " + r.msgs + " mensajes, " + r.nodos + " nodos y " + claves.length + " grupos de ajustes.\n\nReemplaza todo lo que el portal tiene guardado en este equipo. Lo que hay en el nodo no se toca. El portal se vuelve a abrir al terminar.")) return;
+  try {
+    for (const k of copiaClaves()) localStorage.removeItem(k);
+    for (const k of claves) localStorage.setItem(k, c.datos[k]);
+  } catch (e) { toast("No entró todo en el almacenamiento de este equipo: " + (e.message || e), "err"); return; }
+  toast("Copia restaurada. Abriendo de nuevo…", "ok");
+  setTimeout(() => location.reload(), 900);
+}
+function viewCopia(body) {
+  const c = copiaArmar(), r = copiaResumen(c);
+  const tam = new Blob([JSON.stringify(c)]).size;
+  const fin = el("input", { type: "file", accept: ".json,application/json", style: "display:none", onchange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) copiaRestaurar(f); } });
+  body.append(el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Copia de seguridad del portal"), el("small", { class: "muted" }, "Para pasar todo lo que guardó el portal a otro navegador, a otra PC o a la aplicación de Windows."))),
+    el("div", { class: "form" },
+      secH("Qué hay guardado en este equipo"),
+      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, r.msgs + " mensajes · " + r.nodos + " nodos"), el("small", {}, r.claves + " grupos de ajustes · " + fmtKB(tam) + " en total. Incluye servidores MQTT, conexiones guardadas, favoritos, libro de guardia, parámetros de emergencia, mensajes programados, sonidos, zonas del mapa y telemetría."))),
+      secH("Guardar una copia"),
+      actRow("Guardar copia", "Descarga un archivo .json con todo lo de arriba. Guardalo en un pendrive o en Drive.", el("button", { class: "btn", onclick: copiaGuardar }, "Guardar copia")),
+      secH("Restaurar"),
+      actRow("Restaurar desde una copia", "Elegí el archivo .json. Reemplaza lo que hay guardado en este equipo; lo que está en el nodo no se toca.", el("button", { class: "btn ghost", onclick: () => fin.click() }, "Elegir archivo…")),
+      fin,
+      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Pasar del navegador a la aplicación de Windows"), el("small", {}, "1) En el portal abierto en Chrome: Ajustes → Copia de seguridad del portal → Guardar copia. 2) En la aplicación: el mismo lugar → Restaurar desde una copia, y elegí ese archivo. Los mapas descargados para usar sin conexión no viajan en la copia: se vuelven a bajar desde el mapa."))),
+      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Qué no incluye"), el("small", {}, "Los mosaicos de mapa ya descargados, y la configuración que vive en el propio nodo (radio, canales, módulos): para esa está Administración y respaldo.")))));
+}
+window.__copia = { copiaArmar, copiaResumen, copiaRestaurar };
 function viewPerf(body) {
   const c = opsCfg(), res = el("div", { class: "perfres" }, el("small", { class: "muted" }, "Tocá «Medir ahora»: la medición tarda unos 3 segundos."));
   const num = (key, min, max, step, unit) => el("div", { class: "rv inl" }, el("input", { class: "inp", type: "number", min, max, step, value: c[key], style: "width:110px", onchange: (e) => { const v = +e.target.value; if (isFinite(v)) opsSave({ [key]: Math.min(max, Math.max(min, v)) }); } }), el("span", { class: "unit" }, unit));
@@ -3720,10 +3792,10 @@ function viewSound(body) {
       actRow("Sonidos activados", "Interruptor general: si está apagado no suena nada.", sw(c.on, (v) => sndSave({ on: v }))),
       actRow("Volumen", "Aplica a todos los tonos.", [vol, vo]),
       actRow("Silencio nocturno", "No suena nada en el horario elegido (los botones “Probar” siempre suenan).", [sw(q.on, (v) => sndSave({ quiet: { ...sndCfg().quiet, on: v } })), el("span", { class: "unit" }, "de"), qf, el("span", { class: "unit" }, "a"), qt]),
-      secH(IS_APP ? "Avisos del celular" : "Avisos del sistema", IS_APP ? "Con la app en segundo plano o la pantalla apagada, los mensajes llegan como avisos de Android; al tocarlos se abre la conversación. Las alertas de emergencia usan el sonido de alarma." : "Con el portal minimizado o en otra pestaña, los mensajes aparecen como avisos de Windows / del navegador."),
+      secH(IS_APP ? "Avisos del celular" : IS_DESK ? "Avisos de Windows" : "Avisos del sistema", IS_DESK ? "Con la aplicación minimizada, en la bandeja del sistema o detrás de otras ventanas, los mensajes llegan como avisos de Windows; al tocarlos se abre la conversación. Las alertas de emergencia quedan en pantalla hasta que las atiendas y hacen parpadear el ícono en la barra de tareas." : IS_APP ? "Con la app en segundo plano o la pantalla apagada, los mensajes llegan como avisos de Android; al tocarlos se abre la conversación. Las alertas de emergencia usan el sonido de alarma." : "Con el portal minimizado o en otra pestaña, los mensajes aparecen como avisos de Windows / del navegador."),
       actRow("Mostrar avisos de mensajes", "Directos, favoritos y alertas. Las alertas de emergencia se avisan siempre.", sw(notifCfg().on, (v) => notifSave({ on: v }))),
       actRow("Incluir mensajes de canales", "Si está apagado solo avisan los directos, los favoritos y las alertas. Los canales silenciados más abajo tampoco avisan.", sw(notifCfg().ch, (v) => notifSave({ ch: v }))),
-      !IS_APP ? actRow("Permiso del navegador", typeof Notification === "undefined" ? "Este navegador no permite avisos." : Notification.permission === "granted" ? "Concedido ✓" : Notification.permission === "denied" ? "Bloqueado: habilitalo desde el candado de la barra de direcciones." : "Hace falta dar permiso una vez.", typeof Notification !== "undefined" && Notification.permission === "default" ? btn("Permitir avisos", () => Notification.requestPermission().then(() => renderMain()), "") : null) : null,
+      !IS_APP && !IS_DESK ? actRow("Permiso del navegador", typeof Notification === "undefined" ? "Este navegador no permite avisos." : Notification.permission === "granted" ? "Concedido ✓" : Notification.permission === "denied" ? "Bloqueado: habilitalo desde el candado de la barra de direcciones." : "Hace falta dar permiso una vez.", typeof Notification !== "undefined" && Notification.permission === "default" ? btn("Permitir avisos", () => Notification.requestPermission().then(() => renderMain()), "") : null) : null,
       secH("Tono de cada aviso", "Elegí el tono de la lista o cargá tu propio sonido (un archivo corto de audio, hasta 400 KB)."),
       ...evRows,
       secH("Canales", "Silenciá los grupos que hablan mucho. Los mensajes directos y los de favoritos siguen sonando."),
@@ -4304,6 +4376,12 @@ function connectAllServers() {
 async function startBridge() {
   if (S.bridge.busy) return; S.bridge.busy = true; renderTopbar();
   try {
+    if (!S.bridge.up && IS_DESK && ESC().puente) {
+      toast("Abriendo el puente integrado…");
+      const r = await ESC().puente();
+      let ok = await probeBridge(1200);
+      if (!ok) { openBridgeHelpDesk(r && r.error); return; }
+    }
     if (!S.bridge.up) {
       toast("Iniciando el puente…");
       launchBridgeApp();
@@ -4313,6 +4391,17 @@ async function startBridge() {
     const n = connectAllServers();
     toast("Puente activo · conectando a " + n + " servidor" + (n === 1 ? "" : "es"), "ok");
   } finally { S.bridge.busy = false; renderTopbar(); }
+}
+function openBridgeHelpDesk(err) {
+  const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && dlg.remove() });
+  dlg.append(el("div", { class: "mbox" }, el("h3", {}, "El puente MQTT integrado no pudo abrirse"),
+    el("p", {}, "La aplicación trae el puente adentro y lo abre sola en el puerto 9001 de esta computadora. Si no pudo, casi siempre es porque ", el("b", {}, "otro programa ya está usando ese puerto"), ": por ejemplo el puente de Python (", el("code", {}, "puente-mqtt.py"), ") abierto en otra ventana."),
+    el("ul", { class: "helpol" },
+      el("li", {}, "Si tenés abierto el puente de Python, cerralo: la aplicación ya no lo necesita."),
+      el("li", {}, "Si es otro programa, cerralo y tocá Reintentar.")),
+    err ? el("p", { class: "muted small" }, "Detalle técnico: " + err) : null,
+    el("div", { class: "rowbtn" }, el("button", { class: "btn ghost", onclick: () => dlg.remove() }, "Cerrar"), el("button", { class: "btn", onclick: () => { dlg.remove(); startBridge(); } }, "Reintentar"))));
+  document.body.append(dlg);
 }
 function openBridgeHelp() {
   const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && dlg.remove() });
@@ -4362,7 +4451,7 @@ function renderTopbar() {
     el("button", { class: "chip", title: "Estado del nodo conectado", onclick: () => setView(connected() ? "nodes" : "messages") }, icon("M12 3v10 M8 7l4-4 4 4 M6 13h12v3a3 3 0 01-3 3H9a3 3 0 01-3-3z"), el("i", { class: "dot " + lora[0] }), lora[1]),
     el("button", { class: "chip net " + (n.online === true ? "on" : n.online === false ? "off" : "unk"), title: netTip + " (clic para configurar)", onclick: () => setView("settings", "portal.net") },
       (() => { const s = icon(GLOBE); if (n.online === false) { const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", "M4 4l16 16"); p.setAttribute("class", "slash"); s.append(p); } return s; })(), el("i", { class: "dot " + (n.online === true ? "ok" : n.online === false ? "bad" : "wait") }), el("b", {}, netLbl)),
-    IS_APP ? null : el("button", { class: "chip bridgechip " + (S.bridge.up ? "on" : ""), title: S.bridge.up ? "El puente de Python está activo. Clic: conectar a todos los servidores posibles." : "Abre el programa de Python (puente) y conecta a la mayor cantidad de servidores", onclick: startBridge, disabled: S.bridge.busy }, icon("M13 2L4 14h7l-1 8 9-12h-7z"), el("i", { class: "dot " + (S.bridge.busy ? "wait" : S.bridge.up ? "ok" : "off") }), S.bridge.busy ? "Iniciando…" : S.bridge.up ? "Puente: activo" : "Iniciar puente"),
+    IS_APP ? null : el("button", { class: "chip bridgechip " + (S.bridge.up ? "on" : ""), title: IS_DESK ? (S.bridge.up ? "Puente MQTT integrado en la aplicación: activo. Clic: conectar a todos los servidores posibles." : "El puente MQTT integrado no está escuchando. Clic: volver a abrirlo.") : S.bridge.up ? "El puente de Python está activo. Clic: conectar a todos los servidores posibles." : "Abre el programa de Python (puente) y conecta a la mayor cantidad de servidores", onclick: startBridge, disabled: S.bridge.busy }, icon("M13 2L4 14h7l-1 8 9-12h-7z"), el("i", { class: "dot " + (S.bridge.busy ? "wait" : S.bridge.up ? "ok" : "off") }), S.bridge.busy ? "Iniciando…" : S.bridge.up ? "Puente: activo" : "Iniciar puente"),
     el("button", { class: "chip", title: q.err || "Broker MQTT (clic para configurar)", onclick: () => setView("settings", "portal.net") }, icon(MQ_ICON), el("i", { class: "dot " + mqDot }), "MQTT: " + mqLbl + (q.queue.length ? " · " + q.queue.length + " en cola" : ""))].filter(Boolean));
   tickClock();
 }
@@ -4469,7 +4558,7 @@ function updNetView() {
 const NOTIF_KEY = "meshportal:sysnotif";
 const notifCfg = () => { try { return { on: true, ch: true, ...JSON.parse(localStorage.getItem(NOTIF_KEY) || "{}") }; } catch (e) { return { on: true, ch: true }; } };
 const notifSave = (o) => { try { localStorage.setItem(NOTIF_KEY, JSON.stringify({ ...notifCfg(), ...o })); } catch (e) {} };
-const appHidden = () => (IS_APP ? !!window.__appHidden : document.hidden);
+const appHidden = () => (IS_APP ? !!window.__appHidden : IS_DESK ? (document.hidden || !document.hasFocus()) : document.hidden);
 function sysNotify(kind, conv, title, text) {
   const c = notifCfg();
   if (!c.on && kind !== "alerta") return;
@@ -4478,6 +4567,7 @@ function sysNotify(kind, conv, title, text) {
   if (kind !== "alerta" && inQuiet(sndCfg().quiet)) return;
   text = String(text || "").slice(0, 300);
   if (IS_APP && window.AndroidBridge.notify) { try { window.AndroidBridge.notify(kind, conv, title, text); } catch (e) {} return; }
+  if (IS_DESK && ESC().aviso) { try { ESC().aviso(kind, conv, title, text); } catch (e) {} return; }
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
   try {
     const n = new Notification(title, { body: text, tag: conv, renotify: true, requireInteraction: kind === "alerta" });
@@ -4913,6 +5003,12 @@ new MutationObserver((cambios) => {
   }
 }).observe(document.body, { childList: true });
 
+if (IS_DESK && ESC().enEvento) {
+  ESC().enEvento("abrir-conv", (c) => openConv(c));
+  ESC().enEvento("ir", (v, sub) => setView(v, sub));
+  ESC().enEvento("emergencia", () => openPanic());
+  ESC().enEvento("parte", () => abrirParte());
+}
 window.__mesh = S;
 window.__ui = { setView, renderMain, startDemo };
 window.__conn = { connectNet, makeNetTransport, testNet, diagNode };

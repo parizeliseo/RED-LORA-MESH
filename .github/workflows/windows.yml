@@ -1,0 +1,93 @@
+# Arma la aplicación de Windows en una computadora con Windows de verdad (la de GitHub), la abre,
+# la prueba, la instala y la desinstala en silencio. Si todo da bien, deja el instalador y la
+# versión portable para descargar desde la pestaña Actions durante 90 días.
+name: Aplicación de Windows
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "portal/**"
+      - "publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  armar-y-probar:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Dependencias del portal
+        working-directory: portal
+        run: npm ci
+
+      - name: Dependencias de la aplicación
+        working-directory: windows
+        run: npm ci
+
+      - name: Armar instalador y portable
+        working-directory: windows
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Revisar los datos del ejecutable
+        shell: pwsh
+        working-directory: windows
+        run: |
+          $v = (Get-Item "dist/win-unpacked/OPEN SOURCE PARIZ.exe").VersionInfo
+          "Producto:    $($v.ProductName) $($v.ProductVersion)"
+          "Descripción: $($v.FileDescription)"
+          "Autor:       $($v.CompanyName)"
+          if ($v.ProductName -ne "OPEN SOURCE PARIZ") { throw "El ejecutable no tiene los datos del programa" }
+
+      - name: Prueba de humo en Windows
+        working-directory: windows
+        run: |
+          npm install --no-save playwright-core@1
+          node pruebas/humo.js
+
+      - name: Instalar y desinstalar en silencio
+        shell: pwsh
+        working-directory: windows
+        run: |
+          $inst = (Get-ChildItem dist -Filter "*-instalador.exe")[0].FullName
+          $dest = Join-Path $env:RUNNER_TEMP "pariz-instalado"
+          $exe  = Join-Path $dest "OPEN SOURCE PARIZ.exe"
+          Start-Process -FilePath $inst -ArgumentList "/S", "/D=$dest" -Wait
+          if (-not (Test-Path $exe)) { throw "El instalador no dejó el programa en $dest" }
+          "Instalado en $dest"
+          $acceso = Join-Path ([Environment]::GetFolderPath("Desktop")) "OPEN SOURCE PARIZ.lnk"
+          "Acceso directo en el escritorio: $(Test-Path $acceso)"
+          $menu = Join-Path ([Environment]::GetFolderPath("Programs")) "OPEN SOURCE PARIZ.lnk"
+          "Acceso en el menú Inicio:        $(Test-Path $menu)"
+          Start-Process -FilePath (Join-Path $dest "Uninstall OPEN SOURCE PARIZ.exe") -ArgumentList "/S" -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 2 }
+          if (Test-Path $exe) { throw "El desinstalador no quitó el programa" }
+          "Desinstalado sin dejar el programa"
+
+      - name: Guardar instalador y portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPEN-SOURCE-PARIZ-Windows
+          path: |
+            windows/dist/*-instalador.exe
+            windows/dist/*-portable.zip
+          retention-days: 90
+          compression-level: 0
+
+      - name: Guardar la captura de la prueba
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: captura-de-la-prueba-en-windows
+          path: windows/pruebas/captura-*.png
+          if-no-files-found: ignore
+          retention-days: 30

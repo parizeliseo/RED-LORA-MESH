@@ -231,7 +231,7 @@ details.chan .form{padding:0 14px 6px}
 .sech{padding:22px 0 4px;display:flex;flex-direction:column;gap:2px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--acc)}
 .sech small{text-transform:none;letter-spacing:0;font-size:12.5px}
 .rv.inl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.mapattr{position:absolute;right:12px;bottom:34px;background:rgba(255,255,255,.85);color:#334;font-size:10.5px;padding:2px 7px;border-radius:6px;max-width:55%;pointer-events:none}
+.mapattr{position:absolute;right:62px;bottom:14px;background:rgba(255,255,255,.85);color:#334;font-size:10.5px;padding:2px 7px;border-radius:6px;max-width:55%;pointer-events:none}
 .mini.acc{background:var(--acc);color:var(--accink);border-color:var(--acc)}
 .conns{margin-top:18px;text-align:left;display:flex;flex-direction:column;gap:8px}
 .conn{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
@@ -277,8 +277,8 @@ details.chan .form{padding:0 14px 6px}
 .rolebadge{border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:11px}
 .rolebadge.router,.rolebadge.routerclient{border-color:var(--acc)}.rolebadge.repeater{border-color:var(--warn,#c80)}
 .offbadge{margin-left:6px;color:var(--err);font-size:11px}
-.favbtn{border:0;background:none;color:var(--mut);font-size:18px;line-height:1;padding:2px 4px;cursor:pointer;flex:none}
-.favbtn.on{color:#f5b301}.favbtn:hover{color:#f5b301}.favbtn.ph{visibility:hidden;width:20px}.favbtn.big{font-size:22px}
+.favbtn{border:0;background:none;color:var(--mut);font-size:18px;line-height:1;padding:0;cursor:pointer;flex:none;min-width:28px;min-height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px}
+.favbtn.on{color:#f5b301}.favbtn:hover{color:#f5b301}.favbtn.ph{visibility:hidden;width:28px}.favbtn.big{font-size:22px}
 .infohead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .infokv{display:flex;gap:4px;align-items:baseline}.infokv span{color:var(--mut)}
 .scanbox{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;flex-direction:column;gap:6px}
@@ -421,7 +421,7 @@ details.chan .form{padding:0 14px 6px}
 /* zoom del mapa */
 .mapzoom{position:absolute;right:12px;bottom:46px;display:flex;flex-direction:column;gap:6px;z-index:3}
 .mapzoom button{width:42px;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:24px;line-height:1;box-shadow:var(--shadow)}
-.lgtoggle{border:0;background:none;color:var(--acc);font-weight:700;font-size:12px;padding:0;text-align:left}
+.lgtoggle{border:0;background:none;color:var(--acc);font-weight:700;font-size:12px;padding:0 2px;text-align:left;min-height:28px;display:inline-flex;align-items:center}
 @media(max-width:600px){
  .maphint{display:none}
  .legend{bottom:10px;left:10px;max-width:calc(100% - 80px)}
@@ -514,3 +514,10 @@ button.blkh .chev{font-style:normal;font-size:10px;opacity:.75;flex:none}
 /* ── parte de situación ── */
 .partebox{max-width:760px;width:min(96vw,760px)}
 textarea.parte{width:100%;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;overflow:auto;resize:vertical;margin-top:10px}
+
+/* ── filtros de nodos plegables en pantallas angostas: primero la lista, los filtros a pedido ── */
+.nftoggle{display:none}
+@media (max-width:700px){
+ .nftoggle{display:inline-flex}
+ .nodef:not(.abierto){display:none}
+}

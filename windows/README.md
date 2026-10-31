@@ -56,7 +56,7 @@ fusibles de Electron impiden usar el ejecutable como Node suelto, pasarle opcion
 Requiere Node.js 20 o más nuevo. Funciona en Windows y también en Linux, **sin Wine**.
 
 ```bash
-cd portal && npm ci && cd ..
+cd portal && npm ci --ignore-scripts && cd ..
 cd windows
 npm ci
 npm run dist          # prepara el portal y el instructivo, y arma instalador y portable en dist/

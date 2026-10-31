@@ -24,9 +24,12 @@ jobs:
         with:
           node-version: "22"
 
+      # --ignore-scripts: un paquete de la librería del nodo trae un "npx only-allow pnpm" que en
+      # Windows falla al correr en paralelo. El portal no necesita ningún script de instalación
+      # (sale idéntico byte por byte con o sin ellos).
       - name: Dependencias del portal
         working-directory: portal
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Dependencias de la aplicación
         working-directory: windows

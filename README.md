@@ -118,6 +118,7 @@ bash build.sh
 Requiere Node.js 20 o más nuevo. Se arma en Windows o en Linux, sin Wine.
 
 ```bash
+cd portal && npm ci --ignore-scripts && cd ..
 cd windows
 npm ci
 npm run dist     # instalador y portable en windows/dist/

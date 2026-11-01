@@ -17,7 +17,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const red = require("./red");
-const { crearPuente } = require("./puente");
+const { crearPuente, duracion } = require("./puente");
 
 const NOMBRE = "OPEN SOURCE PARIZ";
 const ID_APP = "ar.pariz.portal.escritorio";
@@ -43,7 +43,65 @@ function leerPref() { try { pref = { ...pref, ...JSON.parse(fs.readFileSync(RUTA
 function guardarPref() { try { fs.writeFileSync(RUTA_PREF(), JSON.stringify(pref, null, 1)); } catch (e) { /* sin permiso de escritura */ } }
 
 /* ── puente MQTT ── */
-const puente = crearPuente((t) => log("puente: " + t));
+const puente = crearPuente((t) => log("puente: " + t), () => { clearTimeout(tCambioPuente); tCambioPuente = setTimeout(mostrarEstadoPuente, 250); });
+let ultimoTooltip = "", ultimoMenu = [];
+let tCambioPuente = 0, nivelBandeja = null, nivelBarra = null, conectadosAntes = 0, avisoCorteDado = 0, noLeidos = 0;
+const RUTA_BUILD = path.join(RAIZ, "build");
+const img = (nombre) => nativeImage.createFromPath(path.join(RUTA_BUILD, nombre)); /* toma solo la versión @2x si la pantalla la necesita */
+
+/* Cómo está el puente, en una palabra: conectado (verde), conectando (ámbar), con error (rojo) o sin uso */
+function nivelDe(e) {
+  if (!e.activo) return "error";
+  if (e.conectados > 0) return "ok";
+  if (e.conexiones.some((x) => x.mqtt === "esperando")) return "espera";
+  if (e.errores[0] && e.ahora - e.errores[0].t < 120000) return "error";
+  return "";
+}
+/* el servidor oficial se nombra así en pantalla, nunca por su dirección */
+const verSrv = (h) => (/meshtastic/i.test(String(h)) ? "servidor oficial de la red" : String(h));
+const verTxt = (s) => String(s || "").replace(/[a-z0-9.-]*meshtastic[a-z0-9.-]*/gi, "servidor oficial de la red");
+const servTxt = (x) => verSrv(x.servidor) + ":" + x.puerto + (x.tls ? " TLS" : "");
+function resumenPuente(e) {
+  const ok = e.conexiones.filter((x) => x.mqtt === "conectado");
+  if (!e.activo) return "Puente MQTT apagado" + (e.error ? ": " + e.error : "");
+  if (ok.length) return "MQTT conectado a " + verSrv(ok[0].servidor) + (ok.length > 1 ? " y " + (ok.length - 1) + " más" : "") + " por el puente";
+  if (e.conexiones.length) return "MQTT: conectando a " + verSrv(e.conexiones[0].servidor) + "…";
+  if (nivelDe(e) === "error") return "Puente MQTT: " + verTxt(e.errores[0].texto);
+  return "Puente MQTT listo, sin servidores conectados";
+}
+function ponerTooltip() {
+  if (!bandeja) return;
+  const t = NOMBRE + (noLeidos > 0 ? " · " + noLeidos + " sin leer" : "") + "\n" + resumenPuente(puente.estadoDetallado());
+  ultimoTooltip = t.length > 127 ? t.slice(0, 126) + "…" : t; /* Windows corta en 127 */
+  bandeja.setToolTip(ultimoTooltip);
+}
+function mostrarEstadoPuente() {
+  const e = puente.estadoDetallado(), nivel = nivelDe(e);
+  if (bandeja && nivel !== nivelBandeja) {
+    nivelBandeja = nivel;
+    try { bandeja.setImage(nivel ? img("tray-" + nivel + ".png") : nativeImage.createFromPath(ICONO_BANDEJA)); } catch (x) { /* sin bandeja */ }
+  }
+  /* puntito sobre el ícono de la barra de tareas (solo Windows) */
+  if (ventana && process.platform === "win32" && nivel !== nivelBarra) {
+    nivelBarra = nivel;
+    ventana.setOverlayIcon(nivel ? img("estado-" + nivel + ".png") : null, nivel ? resumenPuente(e) : "");
+  }
+  ponerTooltip();
+  actualizarBandeja();
+  aPortal("puente", e);
+  /* si se cortó todo con la ventana cerrada, avisa (una vez cada 5 minutos como mucho) */
+  const oculta = !ventana || !ventana.isVisible() || ventana.isMinimized();
+  if (conectadosAntes > 0 && e.conectados === 0 && e.activo && oculta && Date.now() - avisoCorteDado > 300000 && Notification.isSupported()) {
+    avisoCorteDado = Date.now();
+    const n = new Notification({ title: "Se cortó la conexión MQTT", body: (e.errores[0] && e.ahora - e.errores[0].t < 60000 ? verTxt(e.errores[0].texto) + ". " : "") + "El portal sigue por LoRa y vuelve a intentar solo.", icon: ICONO_AVISO });
+    n.on("click", () => { mostrar(); aPortal("puente-panel"); });
+    n.show();
+  } else if (conectadosAntes === 0 && e.conectados > 0 && avisoCorteDado && oculta && Notification.isSupported()) {
+    avisoCorteDado = 0; /* volvió después de un corte avisado: se avisa que volvió */
+    new Notification({ title: "MQTT conectado de nuevo", body: resumenPuente(e), icon: ICONO_AVISO, silent: true }).show();
+  }
+  conectadosAntes = e.conectados;
+}
 
 /* ── ventana ── */
 function crearVentana() {
@@ -167,7 +225,8 @@ ipcMain.handle("red:http", async (_e, url, metodo, cuerpo, ms) => {
   catch (e) { return { falla: true, mensaje: e.message, kind: e.kind || "red" }; }
 });
 
-ipcMain.handle("puente:abrir", async () => { const r = await puente.abrir(); actualizarBandeja(); return r; });
+ipcMain.handle("puente:abrir", async () => { const r = await puente.abrir(); mostrarEstadoPuente(); return r; });
+ipcMain.handle("puente:estado", () => puente.estadoDetallado());
 
 ipcMain.handle("abrir-enlace", (_e, url) => { abrirFuera(url); return true; });
 
@@ -187,7 +246,7 @@ ipcMain.on("aviso", (_e, tipo, conv, titulo, texto) => {
 ipcMain.on("no-leidos", (_e, n) => {
   if (!ventana) return;
   ventana.setTitle(n > 0 ? "(" + n + ") " + NOMBRE : NOMBRE);
-  if (bandeja) bandeja.setToolTip(n > 0 ? NOMBRE + " · " + n + " sin leer" : NOMBRE);
+  noLeidos = n; ponerTooltip();
 });
 
 /* imprimir o guardar en PDF: se arma en una ventana aparte, sin mostrarla */
@@ -223,28 +282,39 @@ ipcMain.handle("imprimir", async (_e, html, titulo) => {
 /* ── bandeja del sistema ── */
 function actualizarBandeja() {
   if (!bandeja) return;
-  const est = puente.estado();
+  const e = puente.estadoDetallado();
+  const ahora = Date.now(), hace = (t) => duracion(ahora - t);
+  const marca = { conectado: "🟢", esperando: "🟡", rechazado: "🔴" };
+  const lineas = !e.activo
+    ? [{ label: "Puente MQTT: apagado" + (e.error ? " — " + e.error.slice(0, 70) : ""), enabled: false }]
+    : [{ label: e.conexiones.length ? "Puente MQTT: " + e.conectados + " de " + e.conexiones.length + " conectados" : "Puente MQTT: listo, sin servidores conectados", enabled: false },
+      ...e.conexiones.slice(0, 6).map((x) => ({ label: "   " + (marca[x.mqtt] || "•") + " " + servTxt(x) + " — " +
+        (x.mqtt === "conectado" ? "hace " + hace(x.desde) + " · ↓" + x.recibidos + " ↑" + x.enviados + " mensajes" : x.mqtt === "rechazado" ? verTxt(x.motivo) : "esperando al servidor…"), enabled: false })),
+      ...(e.errores[0] && ahora - e.errores[0].t < 600000 && !e.conectados ? [{ label: "   Último problema: " + verTxt(e.errores[0].texto).slice(0, 90), enabled: false }] : [])];
   const inicio = process.platform === "win32" ? app.getLoginItemSettings().openAtLogin : false;
-  bandeja.setContextMenu(Menu.buildFromTemplate([
+  const plantilla = [
     { label: "Abrir " + NOMBRE, click: mostrar },
     { type: "separator" },
     { label: "🚨 Emergencias…", click: () => { mostrar(); aPortal("emergencia"); } },
     { label: "Parte de situación…", click: () => { mostrar(); aPortal("parte"); } },
     { type: "separator" },
-    { label: est.activo ? "Puente MQTT: activo" + (est.conexiones ? " (" + est.conexiones + " conexiones)" : "") : "Puente MQTT: apagado", enabled: false },
+    ...lineas,
+    { label: "Ver el estado del puente…", click: () => { mostrar(); aPortal("puente-panel"); } },
+    { type: "separator" },
     { label: "Iniciar con Windows (en la bandeja)", type: "checkbox", checked: inicio, visible: process.platform === "win32", click: (i) => { app.setLoginItemSettings({ openAtLogin: i.checked, args: ["--oculta"] }); } },
     { label: "Cerrar la ventana la deja en la bandeja", type: "checkbox", checked: pref.aBandeja, click: (i) => { pref.aBandeja = i.checked; guardarPref(); } },
     { type: "separator" },
     { label: "Salir", click: salir },
-  ]));
+  ];
+  ultimoMenu = plantilla.filter((x) => x.label).map((x) => x.label);
+  bandeja.setContextMenu(Menu.buildFromTemplate(plantilla));
 }
 function crearBandeja() {
   try { bandeja = new Tray(nativeImage.createFromPath(ICONO_BANDEJA)); } catch (e) { log("sin bandeja: " + e.message); return; }
-  bandeja.setToolTip(NOMBRE);
   bandeja.on("click", mostrar);
   bandeja.on("double-click", mostrar);
-  actualizarBandeja();
-  setInterval(actualizarBandeja, 15000); /* refresca el estado del puente */
+  mostrarEstadoPuente();
+  setInterval(mostrarEstadoPuente, 15000); /* refresca tiempos y contadores del menú */
 }
 
 /* ── menú (aparece con Alt) ── */
@@ -293,9 +363,11 @@ function crearMenu() {
 async function guardarRegistro() {
   const { canceled, filePath } = await dialog.showSaveDialog(ventana, { title: "Guardar registro", defaultPath: path.join(app.getPath("downloads"), "registro-open-source-pariz.txt") });
   if (canceled || !filePath) return;
-  const e = puente.estado();
+  const e = puente.estadoDetallado();
   const cab = [NOMBRE + " " + app.getVersion(), "Electron " + process.versions.electron + " · " + os.type() + " " + os.release() + " " + os.arch(),
-    "Puente MQTT: " + (e.activo ? "activo" : "apagado") + (e.error ? " (" + e.error + ")" : "") + " · conexiones abiertas " + e.conexiones + " · total " + e.total, ""];
+    "Puente MQTT: " + (e.activo ? "activo" : "apagado") + (e.error ? " (" + e.error + ")" : "") + " · " + resumenPuente(e) + " · conexiones en total desde que abrió: " + e.total,
+    ...e.conexiones.map((x) => "   " + servTxt(x) + " · " + x.mqtt + (x.motivo ? " (" + x.motivo + ")" : "") + " · desde " + new Date(x.desde).toLocaleTimeString() + " · recibidos " + x.recibidos + " · enviados " + x.enviados),
+    ...e.errores.map((x) => "   " + new Date(x.t).toLocaleTimeString() + " " + x.texto), ""];
   fs.writeFileSync(filePath, cab.concat(registro).join("\r\n"), "utf8");
   shell.showItemInFolder(filePath);
 }
@@ -325,3 +397,5 @@ app.whenReady().then(async () => {
 });
 
 module.exports = { _paraPruebas: { puente, pendientes } };
+/* para las pruebas automáticas, solo fuera del paquete instalado */
+if (!app.isPackaged) global.__pruebas = { bandeja: () => ({ nivelBandeja, nivelBarra, tooltip: ultimoTooltip, menu: ultimoMenu }) };

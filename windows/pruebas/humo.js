@@ -66,6 +66,11 @@ const wsCon = (url, origen) => new Promise((res) => {
   chequeo("el portal ve el puente activo", r.puente);
   chequeo("el puente rechaza páginas de Internet", (await wsCon("ws://127.0.0.1:9001/broker.hivemq.com/1883/tcp", "https://pagina-cualquiera.com")) === 403);
   chequeo("el puente rechaza puertos que no son MQTT", (await wsCon("ws://127.0.0.1:9001/127.0.0.1/80/tcp", "file://")) === 403);
+  const pedirCon = (url, origen) => new Promise((res) => { http.get(url, { headers: origen ? { Origin: origen } : {} }, (r) => { let x = ""; r.on("data", (d) => (x += d)); r.on("end", () => res({ status: r.statusCode, texto: x })); }).on("error", (e) => res({ status: 0, texto: e.message })); });
+  const est = await pedirCon("http://127.0.0.1:9001/estado", "null"); let ej = null; try { ej = JSON.parse(est.texto); } catch (e) { /* no es JSON */ }
+  chequeo("el puente informa su estado", est.status === 200 && ej && ej.puente === "aplicación de Windows" && Array.isArray(ej.conexiones), ej ? { conectados: ej.conectados, conexiones: ej.conexiones.length, errores: ej.errores.length } : est.texto.slice(0, 80));
+  chequeo("el estado no se muestra a páginas de Internet", (await pedirCon("http://127.0.0.1:9001/estado", "https://pagina-cualquiera.com")).status === 403);
+  chequeo("el portal ve el estado del puente", await pg.evaluate(() => !!(window.__mesh.bridge && window.__mesh.bridge.est)));
 
   /* red del programa */
   const red = await pg.evaluate(async () => ({ abierto: await window.__nativeNet.probe("127.0.0.1", 9001, 1500), cerrado: await window.__nativeNet.probe("127.0.0.1", 9, 1500) }));

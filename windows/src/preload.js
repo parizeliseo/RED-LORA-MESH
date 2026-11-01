@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld("__escritorio", {
   abrirEnlace: (url) => ipcRenderer.invoke("abrir-enlace", String(url || "")),
   aviso: (tipo, conv, titulo, texto) => ipcRenderer.send("aviso", String(tipo || ""), String(conv || ""), String(titulo || ""), String(texto || "")),
   puente: () => ipcRenderer.invoke("puente:abrir"),
+  puenteEstado: () => ipcRenderer.invoke("puente:estado"),
   noLeidos: (n) => ipcRenderer.send("no-leidos", n | 0),
   enEvento: (nombre, f) => {
     if (typeof f !== "function") return;

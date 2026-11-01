@@ -291,7 +291,8 @@ details.chan .form{padding:0 14px 6px}
 .clock b{font-size:14px;font-weight:700;letter-spacing:.02em}
 .clock em{font-style:normal;font-size:10.5px;opacity:.75}
 @media(max-width:700px){.clock em{display:none}.clock b{font-size:12.5px}}
-.chip.bridgechip.on{border-color:#86efac;background:rgba(34,197,94,.28)}
+/* el color del chip sigue al estado real del puente, no solo a que esté prendido */
+.chip.bridgechip.pn-ok{border-color:#86efac;background:rgba(34,197,94,.28)}.chip.bridgechip.pn-wait{border-color:#fcd34d;background:rgba(245,158,11,.22)}.chip.bridgechip.pn-bad{border-color:#fca5a5;background:rgba(220,38,38,.3)}
 .chip:disabled{opacity:.7;cursor:progress}
 .helpol{margin:6px 0 10px 20px;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13.5px}
 .helpol code,.mbox code{background:var(--tabbg);padding:1px 5px;border-radius:5px;font-size:12px}
@@ -535,3 +536,20 @@ textarea.parte{width:100%;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace
 .scanavz>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--mut);padding:6px 0;min-height:28px;list-style-position:inside}
 .scanavz>summary:hover{color:var(--ink)}
 .scanavz[open]>summary{margin-bottom:6px}
+/* puente MQTT: chip y panel */
+.dot.idle{background:var(--acc)}.dot.off{background:#94a3b8}
+
+.puentebox{max-width:620px}
+.pbcab{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pbcab h3{margin:0}
+.pbest{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:14px;padding:4px 12px;border-radius:999px;border:1px solid var(--line)}
+.pbest .dot{width:10px;height:10px}
+.pbest.pn-ok{border-color:#22c55e}.pbest.pn-bad{border-color:#dc2626}.pbest.pn-wait{border-color:#f59e0b}
+.pbcon{border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:4px;background:var(--bg)}
+.pbcon.pn-ok{border-left-color:#22c55e}.pbcon.pn-wait{border-left-color:#f59e0b}.pbcon.pn-bad{border-left-color:#dc2626}
+.pbl1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.pbl1 .esptag{margin-left:0}
+.pbl2{font-size:13px}
+.pbnum{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--mut)}.pbnum b{color:var(--ink);font-size:14px}
+.pbvacio{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--mut);line-height:1.45}
+.pberr{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.pberr li{display:flex;gap:10px;line-height:1.4}.pberr time{color:var(--mut);font-variant-numeric:tabular-nums;flex:none}

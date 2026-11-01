@@ -14,3 +14,11 @@ SIN INSTALAR NADA:
   Doble clic en iniciar-puente.bat y deja esa ventana abierta. El boton del portal se pone verde solo.
 
 El puente escucha solo en tu PC (127.0.0.1:9001) y atiende a todos los servidores a la vez.
+
+VER SI ESTA CONECTADO (version 1.10):
+  El boton del puente en el portal dice "Puente: conectado" (verde) cuando un servidor acepto
+  la conexion, "conectando..." (ambar) o "con problemas" (rojo). Tocandolo se abre el panel con
+  cada servidor, los mensajes recibidos y enviados, y que fallo y por que.
+  En la ventana del puente tambien se ve: "el servidor X acepto la conexion" o el problema.
+
+La aplicacion de Windows y la de Android ya traen su propio puente: no necesitan este.

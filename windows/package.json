@@ -1,7 +1,7 @@
 {
   "name": "open-source-pariz-escritorio",
   "productName": "OPEN SOURCE PARIZ",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Sistema LoRa Mesh para Windows: mensajes, mapa, topología, telemetría y guardia, por USB, Bluetooth o red, sin depender del navegador.",
   "author": "Ramón Eliseo Pariz",
   "license": "GPL-3.0-or-later",
@@ -37,6 +37,8 @@
       "build/tray.ico",
       "build/tray.png",
       "build/tray@2x.png",
+      "build/estado-*.png",
+      "build/tray-*.png",
       "package.json",
       "LICENSE"
     ],

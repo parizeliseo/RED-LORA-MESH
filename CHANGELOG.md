@@ -5,6 +5,59 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.10 — 1 de noviembre de 2026
+
+### El puente MQTT dice si de verdad está conectado
+
+Antes el botón decía *Puente: activo* apenas el puente escuchaba, aunque ningún servidor estuviera
+conectado o el servidor hubiera rechazado la clave. Ahora los dos puentes (el integrado en la
+aplicación de Windows y `puente-mqtt.py`) miran lo que pasa sin modificarlo:
+
+- Leen la **respuesta del servidor al saludo MQTT**: aceptado, o rechazado y por qué (usuario o
+  clave incorrectos, no autorizado, servidor no disponible…), en MQTT 3.1.1 y 5.
+- **Cuentan los mensajes** recibidos y enviados, los datos y la última actividad de cada servidor.
+- **Explican los problemas en castellano**: servidor que no existe, que no contesta, que rechaza
+  el puerto, certificado inválido, TLS pedido a un puerto sin TLS, o corte con su duración. Si el
+  mismo problema se repite porque el portal reintenta, se cuenta en vez de repetirse.
+- Lo informan en `http://127.0.0.1:9001/estado`, que solo puede leer el portal.
+- Detectan conexiones muertas en silencio (*keepalive* de TCP).
+
+**En el portal**, el botón del puente muestra el estado real: *Puente: conectado* (verde),
+*conectando…* (ámbar), *con problemas* (rojo), *listo* (azul) o *Iniciar puente*. Al pasar el mouse
+lista cada servidor; al tocarlo abre el panel **Puente MQTT**, que se actualiza solo con cada
+servidor, sus mensajes y los últimos problemas. En *Ajustes → MQTT* un servidor dice *por el
+puente de esta PC* con sus mensajes, y si falla muestra el motivo que vio el puente en lugar de un
+genérico *no se pudo conectar*.
+
+**En la aplicación de Windows**, además:
+
+- El **ícono de la bandeja** y el de la **barra de tareas** llevan un punto verde, ámbar o rojo.
+- El **tooltip** de la bandeja resume el estado y el **menú** lista cada servidor con sus mensajes,
+  o el último problema. *Ver el estado del puente…* abre el panel.
+- Si con la ventana cerrada **se cortan todos los servidores**, avisa por Windows con el motivo
+  (como mucho cada 5 minutos) y vuelve a avisar cuando se reconecta.
+- El registro de diagnóstico incluye cada conexión y los últimos problemas.
+
+### Seguridad del puente de Python
+
+`puente-mqtt.py` ahora **rechaza las conexiones que vienen de páginas de Internet**, como ya hacía
+el puente de la aplicación. Antes cualquier página abierta en el navegador podía usarlo para
+llegar a los servidores de su lista.
+
+### Otros
+
+- La dirección del servidor oficial nunca se muestra: en el panel, la bandeja y los avisos se
+  llama *servidor oficial de la red*.
+- El puente de Python ya no ensucia su ventana con errores cuando le llega algo que no es un
+  pedido web (por ejemplo, un intento de conexión segura).
+
+Probado contra un servidor MQTT real (Mosquitto) con acceso libre, con usuario y clave, y con TLS
+de certificado casero: conexión aceptada, clave equivocada, puerto cerrado, servidor inexistente,
+certificado inválido, TLS en puerto sin TLS, y servidor que se cae y vuelve. No probado con
+hardware real ni con un servidor de Internet desde Windows.
+
+---
+
 ## 1.9 — 31 de octubre de 2026
 
 ### Buscar el nodo partiendo de la red de la PC (aplicación de Windows)

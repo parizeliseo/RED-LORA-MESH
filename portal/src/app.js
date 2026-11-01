@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.9", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.10", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 const IS_DESK = typeof window !== "undefined" && !!window.__escritorio; /* aplicación de Windows: red, puente MQTT, avisos e impresión los da el programa */
 const ESC = () => (IS_DESK ? window.__escritorio : null);
@@ -4221,8 +4221,15 @@ function mqEnsureOne(i) {
 function mqRetry(i) { const r = S.mq.srv[i]; clearTimeout(r.timer); if (S.mq.cfg.enabled && S.mq.cfg.servers[i].enabled) r.timer = setTimeout(() => mqEnsureOne(i), Math.min(60000, 3000 * 2 ** Math.min(r.retry++, 5))); }
 async function mqConnect(i) {
   const q = S.mq, s = q.cfg.servers[i], r = q.srv[i], gen = ++r.gen; r.st = "connecting"; r.err = ""; scheduleRefresh("net");
-  let c;
-  try { c = await mqOpen(s, i); } catch (e) { if (gen !== r.gen) return; r.st = "error"; r.err = e.message || String(e); r.client = null; mqRetry(i); scheduleRefresh("net"); return; }
+  let c; const t0 = Date.now();
+  try { c = await mqOpen(s, i); } catch (e) {
+    if (gen !== r.gen) return;
+    if (S.bridge.up && s.host) await probeBridge(); /* el puente sabe por qué falló: se le pregunta */
+    if (gen !== r.gen) return;
+    const pe = s.host ? puenteErrorDe(mqHost(s.host), s.port || (s.tls ? 8883 : 1883), t0) : "";
+    r.st = "error";
+    r.err = pe ? "Por el puente: " + verTxt(pe) : S.bridge.up && s.host && !s.url ? "No contestó ni directo ni por el puente de esta PC: el servidor tardó demasiado o no está funcionando" : e.message || String(e); r.client = null; mqRetry(i); scheduleRefresh("net"); return;
+  }
   if (gen !== r.gen) { c.close(); return; }
   c.onmessage = (t, p) => mqIncoming(t, p, i);
   c.onclose = () => { if (r.client === c) { r.client = null; r.subs.clear(); r.st = "error"; r.err = "El servidor cerró la conexión"; mqRetry(i); scheduleRefresh("net"); } };
@@ -4420,14 +4427,60 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { ti
 /* ── botón “Iniciar puente”: abre el programa de Python (puente-mqtt.py) y conecta todos los servidores posibles.
    Una página web no puede ejecutar programas: usa un enlace propio (puentepariz://) que se registra una sola vez
    con instalar-boton-puente.bat. Ese enlace solo arranca el puente, no acepta órdenes. ── */
-S.bridge = S.bridge || { up: false, busy: false, last: 0 };
+S.bridge = S.bridge || { up: false, busy: false, last: 0, est: null };
+let puentePanel = null; /* función que redibuja el panel del puente mientras está abierto */
+/* El puente nuevo (aplicación de Windows y puente-mqtt.py desde la 1.10) informa en /estado qué
+   servidores tiene conectados, si el servidor aceptó el usuario y la clave, cuántos mensajes pasan
+   y por qué falló lo último. Un puente viejo solo contesta "estoy": se lo sigue reconociendo. */
 async function probeBridge(ms = 1500) {
-  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms); let up = false;
-  try { await fetch("http://127.0.0.1:9001/", { mode: "no-cors", cache: "no-store", signal: ctl.signal }); up = true; } catch (e) {}
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms); let up = false, est = null;
+  try {
+    const r = await fetch("http://127.0.0.1:9001/estado", { cache: "no-store", signal: ctl.signal });
+    if (r.ok) { est = await r.json(); up = true; }
+  } catch (e) { /* puente viejo (sin /estado o sin permiso de lectura) o apagado */ }
+  if (!up) { try { await fetch("http://127.0.0.1:9001/", { mode: "no-cors", cache: "no-store", signal: ctl.signal }); up = true; } catch (e) {} }
   clearTimeout(to); S.bridge.last = Date.now();
-  if (up !== S.bridge.up) { S.bridge.up = up; renderTopbar(); if (up && S.view === "settings") scheduleRefresh("net"); }
+  setBridge(up, est);
   return up;
 }
+function setBridge(up, est) {
+  const antes = puenteClave();
+  S.bridge.up = up; S.bridge.est = up && est && Array.isArray(est.conexiones) ? est : null;
+  if (puenteClave() !== antes) { renderTopbar(); if (S.view === "settings") scheduleRefresh("net"); }
+  if (puentePanel) puentePanel();
+}
+/* conectado (verde), conectando (ámbar), con problemas (rojo), listo sin uso (azul), apagado (gris) */
+function puenteNivel() {
+  const b = S.bridge, e = b.est;
+  if (b.busy) return "wait";
+  if (!b.up) return "off";
+  if (!e) return "ok"; /* puente viejo: solo se sabe que está */
+  if (e.conectados > 0) return "ok";
+  if (e.conexiones.some((x) => x.mqtt === "esperando")) return "wait";
+  if (e.errores[0] && e.ahora - e.errores[0].t < 120000) return "bad";
+  return "idle";
+}
+const puenteClave = () => { const e = S.bridge.est; return [S.bridge.up, S.bridge.busy, puenteNivel(), e ? e.conectados + "/" + e.conexiones.length : "-"].join("|"); };
+function puenteEtiqueta() {
+  const e = S.bridge.est, n = puenteNivel();
+  if (S.bridge.busy) return "Iniciando…";
+  if (!S.bridge.up) return "Iniciar puente";
+  if (!e) return "Puente: activo";
+  return { ok: "Puente: " + (e.conectados === 1 ? "conectado" : e.conectados + " conectados"), wait: "Puente: conectando…", bad: "Puente: con problemas", idle: "Puente: listo" }[n];
+}
+function puenteTitulo() {
+  const e = S.bridge.est;
+  if (!S.bridge.up) return IS_DESK ? "El puente MQTT integrado no está escuchando. Clic: volver a abrirlo." : "Abre el programa de Python (puente) y conecta a la mayor cantidad de servidores";
+  if (!e) return "Puente MQTT activo (versión anterior: no informa el detalle). Clic: ver el estado.";
+  const l = e.conexiones.map((x) => "• " + verSrv(x.servidor) + ":" + x.puerto + " — " + (x.mqtt === "conectado" ? "conectado, " + x.recibidos + " mensajes recibidos" : x.mqtt === "rechazado" ? "rechazado: " + verTxt(x.motivo) : "esperando al servidor"));
+  if (!l.length) l.push(e.errores[0] && e.ahora - e.errores[0].t < 120000 ? "Último problema: " + verTxt(e.errores[0].texto) : "Ningún servidor está usando el puente ahora.");
+  return "Puente MQTT " + (e.puente === "aplicación de Windows" ? "integrado en la aplicación" : "(programa de Python)") + "\n" + l.join("\n") + "\nClic: ver el detalle.";
+}
+/* el servidor oficial se nombra así en pantalla, nunca por su dirección */
+function verSrv(h) { return /meshtastic/i.test(String(h)) ? "servidor oficial de la red" : String(h); }
+function verTxt(s) { return String(s || "").replace(/[a-z0-9.-]*meshtastic[a-z0-9.-]*/gi, "servidor oficial de la red"); }
+/* el error que vio el puente para un servidor: es mucho más claro que "no se pudo conectar" */
+const puenteErrorDe = (host, port, desde) => { const e = S.bridge.est; if (!e) return ""; const x = e.errores.find((z) => z.servidor === String(host || "").toLowerCase() && +z.puerto === +port && z.t >= desde - 2000); return x ? x.texto : ""; };
 function launchBridgeApp() { const a = el("a", { href: "puentepariz://iniciar", style: "display:none" }); document.body.append(a); a.click(); setTimeout(() => a.remove(), 500); }
 function connectAllServers() {
   const c = S.mq.cfg; c.enabled = true; let n = 0;
@@ -4469,6 +4522,60 @@ function openBridgeHelpDesk(err) {
     el("div", { class: "rowbtn" }, el("button", { class: "btn ghost", onclick: () => dlg.remove() }, "Cerrar"), el("button", { class: "btn", onclick: () => { dlg.remove(); startBridge(); } }, "Reintentar"))));
   document.body.append(dlg);
 }
+/* ── panel "Puente MQTT": qué servidores pasan por el puente, si el servidor los aceptó, cuántos
+   mensajes van y vienen, y los últimos problemas explicados. Se actualiza solo mientras está abierto. ── */
+const kB = (n) => (n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0).replace(".", ",") + " kB" : (n / 1048576).toFixed(1).replace(".", ",") + " MB");
+function openBridgePanel() {
+  if (puentePanel) return;
+  const caja = el("div", { class: "mbox puentebox", role: "dialog", "aria-modal": "true", "aria-labelledby": "pbt" });
+  const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && cerrar() }, caja);
+  const cerrar = () => { puentePanel = null; obs.disconnect(); dlg.remove(); };
+  /* el portal cierra los diálogos con Escape quitándolos del documento: se avisa al sondeo */
+  const obs = new MutationObserver(() => { if (!dlg.isConnected) { puentePanel = null; obs.disconnect(); } });
+  const hace = (e, ms) => ago((Date.now() - (e.ahora - ms)) / 1000);
+  const nombreDe = (host) => { const i = S.mq.cfg.servers.findIndex((s) => mqHost(s.host) === host); return i < 0 ? "" : i === 0 ? "Servidor oficial de la red" : S.mq.cfg.servers[i].name || "Servidor " + (i + 1); };
+  const ESTADO = { conectado: ["ok", "Conectado"], esperando: ["wait", "Esperando la respuesta del servidor…"], rechazado: ["bad", "Rechazado"] };
+  const dibujar = () => {
+    const b = S.bridge, e = b.est, n = puenteNivel();
+    const titulo = !b.up ? "Apagado" : !e ? "Activo" : { ok: e.conectados === 1 ? "Conectado a 1 servidor" : "Conectado a " + e.conectados + " servidores", wait: "Conectando…", bad: "Con problemas", idle: "Listo, sin servidores conectados" }[n];
+    const partes = [
+      el("div", { class: "pbcab" }, el("h3", { id: "pbt" }, "Puente MQTT"), el("span", { class: "pbest pn-" + n }, el("i", { class: "dot " + n }), titulo)),
+      el("p", { class: "muted small" }, !b.up ? "El puente no está funcionando en esta computadora."
+        : (e && e.puente === "aplicación de Windows" ? "Integrado en la aplicación" : "Programa de Python (puente-mqtt.py)") + " · escucha en esta computadora (127.0.0.1:9001)" + (e && e.desde ? " · abierto " + hace(e, e.desde) : "") + ". Hace de pasarela para los servidores que solo atienden MQTT por TCP, como el oficial de la red.")];
+    if (b.up && !e) partes.push(el("div", { class: "pbvacio" }, "Este puente es de una versión anterior y no informa qué está pasando. Actualizá ", el("code", {}, "puente-mqtt.py"), " para ver acá cada servidor, si aceptó el usuario y la clave, y cuántos mensajes pasan."));
+    if (e) {
+      partes.push(el("div", { class: "blkh sub" }, "Servidores por el puente (" + e.conexiones.length + ")"));
+      if (!e.conexiones.length) partes.push(el("div", { class: "pbvacio" }, "Ningún servidor está usando el puente ahora. Los servidores que el navegador no puede alcanzar directo pasan por acá cuando están encendidos en Ajustes → MQTT."));
+      for (const x of e.conexiones) {
+        const [cl, tx] = ESTADO[x.mqtt] || ["off", x.mqtt], nom = nombreDe(x.servidor);
+        partes.push(el("div", { class: "pbcon pn-" + cl },
+          el("div", { class: "pbl1" }, el("i", { class: "dot " + cl }), el("b", {}, verSrv(x.servidor) + ":" + x.puerto), el("span", { class: "esptag gris" }, x.tls ? "TLS" : "TCP"), nom ? el("small", { class: "muted" }, nom) : null),
+          el("div", { class: "pbl2" }, x.mqtt === "conectado" ? "Conectado " + hace(e, x.desde) : x.mqtt === "rechazado" ? "Rechazado: " + verTxt(x.motivo) : tx),
+          x.mqtt === "conectado" ? el("div", { class: "pbnum" },
+            el("span", {}, el("b", {}, String(x.recibidos)), " recibidos"), el("span", {}, el("b", {}, String(x.enviados)), " enviados"),
+            el("span", {}, kB(x.bytesRx) + " ↓ · " + kB(x.bytesTx) + " ↑"), el("span", {}, "última actividad " + hace(e, x.ultimo))) : null));
+      }
+      const errs = e.errores.slice(0, 5);
+      if (errs.length) {
+        partes.push(el("div", { class: "blkh sub" }, "Últimos problemas"));
+        partes.push(el("ul", { class: "pberr" }, ...errs.map((z) => el("li", {}, el("time", {}, hhmm(Date.now() - (e.ahora - z.t))), el("span", {}, verTxt(z.texto), z.veces > 1 ? el("small", { class: "muted" }, " · " + z.veces + " veces") : null)))));
+      }
+    }
+    partes.push(el("div", { class: "mfoot" },
+      b.up ? el("button", { class: "btn", onclick: () => { const k = connectAllServers(); toast("Conectando a " + k + " servidor" + (k === 1 ? "" : "es"), "ok"); } }, "Conectar a todos los servidores") : el("button", { class: "btn", onclick: () => { cerrar(); startBridge(); } }, "Iniciar el puente"),
+      el("button", { class: "btn ghost", onclick: () => { cerrar(); setView("settings", "portal.net"); } }, "Ajustes de MQTT"),
+      el("button", { class: "btn ghost", onclick: cerrar }, "Cerrar")));
+    /* el foco no se pierde al redibujar */
+    const foco = document.activeElement && caja.contains(document.activeElement) ? document.activeElement.textContent : null;
+    caja.replaceChildren(...partes);
+    if (foco) { const v = [...caja.querySelectorAll("button")].find((x) => x.textContent === foco); if (v) v.focus(); }
+  };
+  puentePanel = dibujar;
+  dibujar(); document.body.append(dlg);
+  obs.observe(document.body, { childList: true });
+  probeBridge();
+}
+if (IS_DESK) ESC().enEvento("puente-panel", () => { setView("messages"); openBridgePanel(); });
 function openBridgeHelp() {
   const dlg = el("div", { class: "modal", onclick: (e) => e.target === dlg && dlg.remove() });
   const li = (...k) => el("li", {}, ...k);
@@ -4483,7 +4590,14 @@ function openBridgeHelp() {
     el("div", { class: "rowbtn" }, el("button", { class: "btn ghost", onclick: () => dlg.remove() }, "Cerrar"), el("button", { class: "btn", onclick: () => { dlg.remove(); startBridge(); } }, "Reintentar"))));
   document.body.append(dlg);
 }
-if (!IS_APP) { setTimeout(() => probeBridge(), 1200); setInterval(() => { if (!S.bridge.busy) probeBridge(); }, 20000); }
+if (!IS_APP) {
+  const ciclo = async () => {
+    if (!S.bridge.busy) await probeBridge();
+    setTimeout(ciclo, puentePanel ? 2000 : S.bridge.up && !document.hidden ? 5000 : 20000);
+  };
+  setTimeout(ciclo, 1200);
+  if (IS_DESK) ESC().enEvento("puente", (e) => setBridge(!!(e && e.activo), e)); /* la aplicación avisa cada cambio */
+}
 let appStLast = "";
 function appStatus() { /* texto de la notificación fija de Android */
   if (!IS_APP) return;
@@ -4517,8 +4631,8 @@ function renderTopbar() {
     el("button", { class: "chip", title: "Estado del nodo conectado", onclick: () => setView(connected() ? "nodes" : "messages") }, icon("M12 3v10 M8 7l4-4 4 4 M6 13h12v3a3 3 0 01-3 3H9a3 3 0 01-3-3z"), el("i", { class: "dot " + lora[0] }), lora[1]),
     el("button", { class: "chip net " + (n.online === true ? "on" : n.online === false ? "off" : "unk"), title: netTip + " (clic para configurar)", onclick: () => setView("settings", "portal.net") },
       (() => { const s = icon(GLOBE); if (n.online === false) { const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", "M4 4l16 16"); p.setAttribute("class", "slash"); s.append(p); } return s; })(), el("i", { class: "dot " + (n.online === true ? "ok" : n.online === false ? "bad" : "wait") }), el("b", {}, netLbl)),
-    IS_APP ? null : el("button", { class: "chip bridgechip " + (S.bridge.up ? "on" : ""), title: IS_DESK ? (S.bridge.up ? "Puente MQTT integrado en la aplicación: activo. Clic: conectar a todos los servidores posibles." : "El puente MQTT integrado no está escuchando. Clic: volver a abrirlo.") : S.bridge.up ? "El puente de Python está activo. Clic: conectar a todos los servidores posibles." : "Abre el programa de Python (puente) y conecta a la mayor cantidad de servidores", onclick: startBridge, disabled: S.bridge.busy }, icon("M13 2L4 14h7l-1 8 9-12h-7z"), el("i", { class: "dot " + (S.bridge.busy ? "wait" : S.bridge.up ? "ok" : "off") }), S.bridge.busy ? "Iniciando…" : S.bridge.up ? "Puente: activo" : "Iniciar puente"),
-    el("button", { class: "chip", title: q.err || "Broker MQTT (clic para configurar)", onclick: () => setView("settings", "portal.net") }, icon(MQ_ICON), el("i", { class: "dot " + mqDot }), "MQTT: " + mqLbl + (q.queue.length ? " · " + q.queue.length + " en cola" : ""))].filter(Boolean));
+    IS_APP ? null : el("button", { class: "chip bridgechip " + (S.bridge.up ? "on " : "") + "pn-" + puenteNivel(), title: puenteTitulo(), "aria-label": puenteEtiqueta() + ". " + puenteTitulo().replace(/\n/g, ". "), onclick: () => (S.bridge.up ? openBridgePanel() : startBridge()), disabled: S.bridge.busy }, icon("M13 2L4 14h7l-1 8 9-12h-7z"), el("i", { class: "dot " + puenteNivel() }), puenteEtiqueta()),
+    el("button", { class: "chip", title: verTxt(q.err) || "Broker MQTT (clic para configurar)", onclick: () => setView("settings", "portal.net") }, icon(MQ_ICON), el("i", { class: "dot " + mqDot }), "MQTT: " + mqLbl + (q.queue.length ? " · " + q.queue.length + " en cola" : ""))].filter(Boolean));
   tickClock();
 }
 function updRoute() {
@@ -4589,7 +4703,7 @@ function viewNet(body) {
       row("Dirección web (WebSocket)", "ws://… o wss://…", f.url), row("Usuario", "", f.user), row("Contraseña", "Se guarda solo en este navegador", f.pass),
       row("Tema raíz", "Vacío = el del nodo o msh/" + (S.cfg.lora ? enumName(C.Config_LoRaConfig_RegionCode, S.cfg.lora.region) : "REGIÓN") + " (actual: " + mqRoot() + ")", f.root),
       el("div", { class: "rowbtn chips" },
-        el("button", { class: "btn ghost", onclick: async (e) => { const v = readSrv(i); e.target.disabled = true; toast("Probando…"); try { const t = await mqOpen(v, i); t.close(); toast("Conexión correcta: " + (t.url || ""), "ok"); } catch (er) { toast("No se pudo conectar: " + er.message, "err"); } e.target.disabled = false; } }, "Probar conexión"),
+        el("button", { class: "btn ghost", onclick: async (e) => { const v = readSrv(i); e.target.disabled = true; toast("Probando…"); try { const t = await mqOpen(v, i); t.close(); toast("Conexión correcta: " + verTxt(t.url || ""), "ok"); } catch (er) { toast("No se pudo conectar: " + er.message, "err"); } e.target.disabled = false; } }, "Probar conexión"),
         i === 0 ? el("button", { class: "btn ghost", onclick: () => mqApplyToNode(readSrv(0)) }, "Aplicar al nodo") : null,
         i === 0 ? el("button", { class: "btn ghost", onclick: () => fill(SRV_DEF[0]) }, "Restaurar datos oficiales") : null,
         ...(i === 0 ? [] : MQ_PRESETS.map((p) => el("button", { class: "btn ghost", onclick: () => fill({ name: p.name, host: p.host, port: 8883, tls: true, url: p.url, user: p.user || "" }) }, p.name))))));
@@ -4606,7 +4720,8 @@ function viewNet(body) {
 function updNetView() {
   const box = $("#netstatus"); if (!box) return;
   const n = S.net, q = S.mq, st = q.stats;
-  q.srv.forEach((r, i) => { const e = $("#sst" + i); if (!e) return; const s = q.cfg.servers[i], k = q.cfg.enabled && s.enabled ? r.st : "off", d = SRV_ST[k] || SRV_ST.off; e.replaceChildren(el("i", { class: "dot " + d[0] }), d[1] + (k === "on" && r.via ? " · " + r.via : "") + (k === "error" && r.err ? " · " + r.err : "")); });
+  q.srv.forEach((r, i) => { const e = $("#sst" + i); if (!e) return; const s = q.cfg.servers[i], k = q.cfg.enabled && s.enabled ? r.st : "off", d = SRV_ST[k] || SRV_ST.off; const pb = k === "on" && r.via && r.via.startsWith("ws://localhost:9001/"), bx = pb && S.bridge.est ? S.bridge.est.conexiones.find((z) => z.servidor === mqHost(s.host) && +z.puerto === +(s.port || (s.tls ? 8883 : 1883))) : null;
+    e.replaceChildren(el("i", { class: "dot " + d[0] }), d[1] + (pb ? " · por el puente de esta PC" + (bx ? " · " + bx.recibidos + " mensajes recibidos" : "") : k === "on" && r.via ? " · " + verTxt(r.via) : "") + (k === "error" && r.err ? " · " + verTxt(r.err) : "")); });
   const nOn = q.srv.filter((x) => x.st === "on").length, nAct = q.srv.filter((x, i) => q.cfg.enabled && q.cfg.servers[i].enabled).length;
   const mqTxt = { on: nOn + " de " + nAct + (nAct === 1 ? " servidor conectado" : " servidores conectados") + (nOn ? " · se envía por el primero disponible" : ""), connecting: "Conectando…", error: "Ningún servidor conectado" + (q.err ? ": " + q.err : ""), wait: "Esperando que vuelva Internet", off: "Apagado" }[q.st];
   box.replaceChildren(...[el("b", {}, "Estado ahora"),

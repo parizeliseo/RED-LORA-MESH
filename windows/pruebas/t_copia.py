@@ -1,6 +1,7 @@
+import os, tempfile
 import asyncio, json, os
 from playwright.async_api import async_playwright
-P = "file:///root/meshportal/dist/portal-meshtastic.html"
+P = "file://" + os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "portal", "dist", "portal-meshtastic.html"))
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch()
@@ -21,7 +22,7 @@ async def main():
         print("pantalla:", (await pg.evaluate("()=>document.querySelector('#main').innerText")).split("\n")[0:4])
         async with pg.expect_download() as d:
             await pg.get_by_role("button", name="Guardar copia", exact=True).click()
-        dl = await d.value; ruta = "/tmp/claude-0/copia.json"; await dl.save_as(ruta)
+        dl = await d.value; ruta = os.path.join(tempfile.gettempdir(), "copia.json"); await dl.save_as(ruta)
         c = json.load(open(ruta)); print("archivo:", dl.suggested_filename, "| claves:", sorted(c["datos"].keys()), "| origen:", c["origen"])
         # 2) "PC nueva": vacía; restaurar
         ctx2 = await b.new_context(); pg2 = await ctx2.new_page()
@@ -37,9 +38,9 @@ async def main():
              ajeno: localStorage.getItem('otra-cosa') })""")
         print("restaurado:", r)
         # 3) un archivo cualquiera no debe romper nada
-        open("/tmp/claude-0/malo.json","w").write('{"hola":1}')
+        open(os.path.join(tempfile.gettempdir(), "malo.json"),"w").write('{"hola":1}')
         await pg2.evaluate("()=>window.__ui.setView('settings','portal.copia')"); await pg2.wait_for_timeout(500)
-        await pg2.set_input_files("input[type=file][accept*=json]", "/tmp/claude-0/malo.json"); await pg2.wait_for_timeout(600)
+        await pg2.set_input_files("input[type=file][accept*=json]", os.path.join(tempfile.gettempdir(), "malo.json")); await pg2.wait_for_timeout(600)
         print("archivo equivocado →", await pg2.evaluate("()=>[...document.querySelectorAll('#toasts *')].map(e=>e.innerText).filter(Boolean).pop()"))
         print("errores:", errs or "ninguno")
         await b.close()

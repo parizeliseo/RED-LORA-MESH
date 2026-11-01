@@ -20,7 +20,7 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 | Archivo | Qué es |
 |---|---|
 | [`portal-lora-mesh.html`](publicado/portal-lora-mesh.html) | El portal para PC. Un solo archivo: se abre con doble clic. |
-| [`OPEN-SOURCE-PARIZ-app-1.9.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.9.apk) | La aplicación Android (7.0 o más nuevo). |
+| [`OPEN-SOURCE-PARIZ-app-1.10.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.10.apk) | La aplicación Android (7.0 o más nuevo). |
 | [`Instructivo-portal-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo del portal, con capturas. |
 | [`Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación. |
 
@@ -143,8 +143,9 @@ Conviene ser claro sobre esto:
   teléfono (Bluetooth, USB, red, avisos y GPS), y el código Java compila limpio.
 - La **aplicación para Windows** se arma y se prueba en una computadora con Windows de GitHub
   en cada cambio: abre el programa, revisa las nueve pantallas, el puente MQTT, la red propia y el
-  selector USB, y lo instala y desinstala en silencio. El puente se prueba además contra un
-  servidor MQTT por TCP.
+  selector USB, y lo instala y desinstala en silencio. Los dos puentes MQTT (el de la aplicación
+  y el de Python) se prueban además contra un servidor Mosquitto real: conexión aceptada, clave
+  equivocada, certificado inválido, puerto cerrado y servidor que se cae y vuelve.
 - **Lo que todavía no se probó en hardware real** es cualquiera de las dos aplicaciones contra un
   nodo físico: el teléfono por Bluetooth o USB-OTG, y en Windows los puertos COM reales y el
   emparejamiento Bluetooth con PIN. Si encontrás algo que no funciona, es el lugar más probable.

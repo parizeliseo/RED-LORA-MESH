@@ -521,3 +521,17 @@ textarea.parte{width:100%;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace
  .nftoggle{display:inline-flex}
  .nodef:not(.abierto){display:none}
 }
+/* búsqueda en la red: redes de esta PC (programa de Windows) y placas ESP32 */
+.mired{display:flex;flex-direction:column;gap:6px}
+.mired-it{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--bg)}
+.mired-it b{font-size:13px}.mired-it small{display:block;color:var(--mut);font-size:12px;margin-top:2px}
+.mired-it.virt{opacity:.75;border-style:dashed}
+.mired .aviso{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;line-height:1.45}
+.esptag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;line-height:1.5;border-radius:999px;padding:0 7px;background:var(--acc);color:var(--accink);vertical-align:1px}
+.esptag.ok{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:600}
+.esptag.gris{background:transparent;color:var(--mut);border:1px dashed var(--line);font-weight:600}
+.destit.esp{border-color:var(--acc);border-style:solid}
+.scanavz{border-top:1px solid var(--line);padding-top:6px;margin-top:4px}
+.scanavz>summary{cursor:pointer;font-weight:600;font-size:13px;color:var(--mut);padding:6px 0;min-height:28px;list-style-position:inside}
+.scanavz>summary:hover{color:var(--ink)}
+.scanavz[open]>summary{margin-bottom:6px}

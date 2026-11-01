@@ -71,6 +71,13 @@ const wsCon = (url, origen) => new Promise((res) => {
   const red = await pg.evaluate(async () => ({ abierto: await window.__nativeNet.probe("127.0.0.1", 9001, 1500), cerrado: await window.__nativeNet.probe("127.0.0.1", 9, 1500) }));
   chequeo("la red del programa prueba puertos de verdad", red.abierto.ok === true && red.cerrado.ok === false, red);
 
+  /* redes de la PC y tabla de vecinos: en Windows sale de os.networkInterfaces() y de arp.exe */
+  const rd = await pg.evaluate(async () => ({ redes: await window.__nativeNet.redes(), vecinos: await window.__nativeNet.vecinos() }));
+  const utiles = rd.redes.filter((x) => !x.virtual);
+  chequeo("lee las redes de la PC", utiles.length > 0 && utiles.every((x) => /^\d+\.\d+\.\d+\.\d+$/.test(x.ip) && x.tramos.length && x.direcciones > 0),
+    rd.redes.map((x) => x.nombre + " " + x.ip + "/" + x.prefijo + " → " + x.tramos.join(",") + (x.virtual ? " (virtual)" : "") + (x.principal ? " (principal)" : "")));
+  chequeo("lee la tabla de vecinos", Array.isArray(rd.vecinos) && rd.vecinos.every((v) => /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/.test(v.mac)), rd.vecinos.length + " vecinos" + (rd.vecinos[0] ? " · ej. " + rd.vecinos[0].ip + " " + rd.vecinos[0].mac : ""));
+
   /* fusibles: aunque se pidió --inspect por NODE_OPTIONS, no debe haber depurador de Node */
   chequeo("los fusibles bloquean el depurador de Node", (await pedir("http://127.0.0.1:9229/json")).status === 0);
 

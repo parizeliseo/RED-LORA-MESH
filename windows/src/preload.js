@@ -4,7 +4,8 @@
  * portal no puede tocar nada del sistema, solo usar estas funciones.
  *
  *  window.__escritorio  avisos de Windows, impresión, enlaces, puente MQTT y eventos del programa
- *  window.__nativeNet   red hecha por el programa (mismo contrato que en la app de Android)
+ *  window.__nativeNet   red hecha por el programa (mismo contrato que en la app de Android, más
+ *                       redes() y vecinos() para que la búsqueda de nodos parta de la red de la PC)
  *
  * Además dibuja los selectores que en Chrome dibuja el navegador: qué puerto USB usar, qué nodo
  * Bluetooth, y el PIN de emparejamiento. Usan las mismas clases que los diálogos del portal, así
@@ -37,6 +38,9 @@ contextBridge.exposeInMainWorld("__escritorio", {
 /* ── red: los errores viajan como objeto simple para que el portal pueda leer .kind ── */
 contextBridge.exposeInMainWorld("__nativeNet", {
   probe: (host, port, ms) => ipcRenderer.invoke("red:probe", String(host), port | 0, ms | 0),
+  /* redes de esta PC (adaptador, IP, máscara y el rango a revisar) y la tabla de vecinos (ARP) */
+  redes: () => ipcRenderer.invoke("red:redes"),
+  vecinos: () => ipcRenderer.invoke("red:vecinos"),
   http: async (url, metodo, cuerpo, ms) => {
     const r = await ipcRenderer.invoke("red:http", String(url), String(metodo || "GET"), cuerpo ? new Uint8Array(cuerpo) : null, ms | 0);
     if (r && r.falla) throw { message: r.mensaje || "error de red", kind: r.kind || "red" }; // eslint-disable-line no-throw-literal

@@ -5,6 +5,48 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.9 — 31 de octubre de 2026
+
+### Buscar el nodo partiendo de la red de la PC (aplicación de Windows)
+
+Antes había que saber la red y escribirla (o adivinar entre `192.168.1` y `192.168.0`). Ahora
+la aplicación le pregunta a Windows a qué redes está conectada la PC y arranca desde ahí:
+
+- **Redes de esta PC**: cada adaptador con su tipo (WiFi o cable), la IP de la PC, la red y
+  cuántas direcciones tiene; la que sale a Internet va marcada. Los adaptadores virtuales
+  (VirtualBox, VMware, Hyper-V, VPN, Bluetooth, contenedores) se reconocen por el nombre o por
+  la placa de red virtual, quedan al final y no se revisan salvo que se pida.
+- **Buscar en la red de esta PC**, un solo botón. Arma el rango con la IP y la máscara reales:
+  redes de hasta /22 (1022 direcciones) enteras; si es más grande, el tramo /24 de la PC. La
+  propia PC no se revisa.
+- **Placas ESP32**: al terminar lee la tabla de vecinos de Windows (`arp -a`) y marca con
+  **ESP32** los equipos cuya placa de red es de Espressif, el fabricante del chip de la
+  Heltec V3. Lista aparte las placas ESP32 que están en la red pero no contestaron como nodo,
+  con un botón para probar sus puertos.
+- **Más rápida**: la tabla de vecinos dice qué direcciones tienen un equipo, así la primera
+  pasada es corta y solo se vuelve a esperar a los equipos que existen. En la red de prueba:
+  253 direcciones en 2,5 s (antes 12 s), y un nodo que perdía los primeros intentos de
+  conexión se encontró igual.
+- Los resultados quedan justo debajo del botón; la carga manual de redes y puertos pasó a
+  *Otras redes y puertos*, plegado.
+
+### Un router ya no pasa por nodo
+
+Sin las trabas de CORS (aplicación de Windows y de Android), un equipo que contesta *200* a
+cualquier dirección —muchos routers, impresoras y cámaras— se confirmaba como nodo. Ahora un
+nodo tiene que contestar la API sin cuerpo o en binario, nunca con una página web; esos equipos
+salen como *«es una página web, no un nodo»*. En el navegador se aplica lo mismo cuando el
+equipo deja leer su respuesta.
+
+### Otros
+
+- La tapa del instructivo del portal decía *Versión 1.0, 19 de octubre* desde la primera
+  entrega. Ahora dice la versión y la fecha reales.
+- El flujo de Windows instala las dependencias del portal sin scripts: una librería ejecutaba
+  `npx only-allow pnpm`, que en Windows fallaba.
+
+---
+
 ## 1.8 — 31 de octubre de 2026
 
 ### Aplicación para Windows

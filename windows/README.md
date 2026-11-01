@@ -11,7 +11,7 @@ mensajes con la ventana cerrada. Es el mismo portal, con todas sus funciones, ar
 |---|---|---|
 | USB y Bluetooth | Solo Chrome, Edge, Brave u Opera | Siempre, con su propio selector; marca los chips de las placas conocidas |
 | PIN de Bluetooth | Ventana aparte de Windows | Lo pide la aplicación |
-| Buscar nodos en la red | Consultas web; deja afuera a los equipos sin permiso CORS | Prueba los puertos de verdad, sin CORS |
+| Buscar nodos en la red | Hay que escribir la red; consultas web que dejan afuera a los equipos sin permiso CORS | Toma sola la red de la PC (IP y máscara), prueba los puertos de verdad y marca las placas ESP32 por la tabla de vecinos |
 | Puente MQTT | Instalar Python y el puente aparte | **Incluido**, se abre solo |
 | Avisos | Con el navegador abierto | Avisos de Windows con la ventana cerrada; las alertas parpadean en la barra de tareas |
 | Imprimir | Ventana del navegador | Guardar como PDF directo, o imprimir |
@@ -34,7 +34,7 @@ su PC»*. Se sigue con **Más información → Ejecutar de todas formas**.
 ```
 src/main.js      ventana, bandeja, menú, avisos, impresión y permisos de USB y Bluetooth
 src/preload.js   lo que el programa le ofrece al portal, y los selectores de puerto, nodo y PIN
-src/red.js       red hecha por el programa (mismo contrato que la app de Android)
+src/red.js       red hecha por el programa (mismo contrato que la app de Android), redes de la PC y tabla de vecinos
 src/puente.js    puente MQTT: WebSocket en 127.0.0.1:9001 → servidor MQTT por TCP
 build/           ícono, licencia del instalador y scripts de armado
 pruebas/         pruebas del programa (humo.js es la que corre en Windows)
@@ -74,6 +74,7 @@ en JavaScript en lugar de ejecutar el instalador bajo Wine.
 ```bash
 node pruebas/humo.js                       # abre el programa armado y revisa todo
 node pruebas/t_puente.js                   # el puente contra un servidor MQTT por TCP en 1883
+node pruebas/t_mired.js                    # búsqueda en la red de la PC (necesita una red de prueba)
 ```
 
 Lo que **no** se puede probar sin hardware: puertos COM reales, el emparejamiento Bluetooth con

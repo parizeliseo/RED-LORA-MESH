@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.8", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.9", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 const IS_DESK = typeof window !== "undefined" && !!window.__escritorio; /* aplicación de Windows: red, puente MQTT, avisos e impresión los da el programa */
 const ESC = () => (IS_DESK ? window.__escritorio : null);
@@ -440,6 +440,7 @@ async function diagNode(hostPort, tls, ms) {
   if (api.ok) return { ok: true, kind: "node", msg: "" };
   const alive = await probeAlive(hostPort.replace(/:\d+$/, ""), +(hostPort.match(/:(\d+)$/) || [0, tls ? 443 : 80])[1], tls, ms);
   if (alive.ok) {
+    if (api.html) return { ok: false, kind: "other", msg: "En esa dirección hay un equipo con página web, pero no es un nodo: no contesta la API del nodo (puede ser el router, una impresora o una cámara)." };
     if (api.err === "timeout") return { ok: false, kind: "slow", msg: "El equipo contesta pero tarda demasiado en responder la consulta del portal. Probá de nuevo o acercá el nodo al WiFi." };
     return { ok: false, kind: "blocked", msg: tls
       ? "Hay un equipo en esa dirección, pero el navegador no acepta su certificado. Abrí " + url + " en una pestaña, aceptá el aviso de seguridad y volvé a probar."
@@ -452,7 +453,13 @@ async function diagNode(hostPort, tls, ms) {
 async function rawFetch(url, opts, ms, sig) {
   const n = NAT();
   if (n && /^https?:\/\//i.test(url) && opts.mode !== "no-cors") { /* en la app lo pide el teléfono */
-    try { const r = await n.http(url, opts.method || "GET", opts.body || null, ms); return { ok: r.status === 204 || (r.status >= 200 && r.status < 400), status: r.status }; }
+    try {
+      const r = await n.http(url, opts.method || "GET", opts.body || null, ms);
+      /* sin CORS de por medio, cualquier router que conteste "200" a todo parecería un nodo: el nodo
+         responde la API sin cuerpo o en binario, nunca con una página web */
+      const b = r.body || [], i = Array.prototype.findIndex.call(b, (x) => x > 32), html = i >= 0 && b[i] === 60; /* "<" */
+      return { ok: r.status === 204 || (r.status >= 200 && r.status < 400 && !html), status: r.status, html };
+    }
     catch (e) { return { ok: false, err: e.kind === "timeout" ? "timeout" : "red" }; }
   }
   const ctl = new AbortController(), ab = () => ctl.abort();
@@ -460,7 +467,10 @@ async function rawFetch(url, opts, ms, sig) {
   if (sig) sig.addEventListener("abort", ab);
   try {
     const r = await fetch(url, { ...opts, signal: ctl.signal, cache: "no-store", redirect: "follow" });
-    return { ok: opts.mode === "no-cors" ? true : r.ok || r.status === 204, status: r.status, type: r.type };
+    if (opts.mode === "no-cors") return { ok: true, status: r.status, type: r.type };
+    /* el nodo contesta la API con 204 o en binario; una página web es otro equipo (router, impresora…) */
+    const html = r.status !== 204 && /text\/html/i.test(r.headers.get("content-type") || "");
+    return { ok: (r.ok || r.status === 204) && !html, status: r.status, type: r.type, html };
   } catch (e) {
     return { ok: false, err: ctl.__to ? "timeout" : (sig && sig.aborted) ? "cancel" : "red" };
   } finally { clearTimeout(to); if (sig) sig.removeEventListener("abort", ab); }
@@ -541,20 +551,23 @@ const hostsOf = (txt) => {
 const red24 = (t) => { const m = String(t).trim().match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}/); return m && ok255(m[1].split(".")) ? m[1] : null; };
 /* Dos pasadas. La primera barre toda la red rápido; la segunda confirma solo los candidatos,
    con paciencia. Así un nodo lento ya no se pierde y el barrido entero no tarda minutos. */
-async function scanNetwork(hosts, ports, onProg, sig, conc = 64) {
+async function scanNetwork(hosts, ports, onProg, sig, conc = 64, opts = {}) {
   const jobs = []; for (const h of hosts) for (const p of ports) jobs.push([h, p]);
   const pool = async (list, fn, n) => { let i = 0; await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => { while (i < list.length && !(sig && sig.aborted)) { const k = i++; await fn(list[k]); } })); };
   const total = jobs.length; let done = 0;
   const alive = [], lentos = [], nodes = [];
   await pool(jobs, async ([h, p]) => {
     /* en una red real las direcciones vacías fallan enseguida: el tope alto solo lo pagan las que no contestan */
-    const r = await probeAlive(h, p.port, p.tls, 3000, sig); done++;
+    const r = await probeAlive(h, p.port, p.tls, opts.msVivo || 3000, sig); done++;
     if (r.ok) alive.push({ host: h, port: p.port, tls: p.tls });
     else if (r.err === "timeout") lentos.push({ host: h, port: p.port, tls: p.tls }); /* quizá sea un nodo lento: se reintenta con más tiempo */
     onProg(done, total, nodes, "buscando");
-  }, conc);
+  }, opts.conc || conc);
   if (sig && sig.aborted) return { nodes, otros: [] };
   const otros = [];
+  /* el programa de Windows sabe qué direcciones de la red local tienen un equipo (tabla ARP):
+     no se pierde tiempo reintentando las vacías */
+  if (opts.filtroLentos && lentos.length) { try { const f = await opts.filtroLentos(lentos); if (Array.isArray(f)) lentos.splice(0, lentos.length, ...f); } catch (e) { /* se reintentan todas */ } }
   /* las que no contestaron a tiempo se reintentan con el doble de paciencia: un nodo cargado puede tardar varios segundos */
   await pool(lentos.slice(0, 24), async (a) => {
     const r = await probeAlive(a.host, a.port, a.tls, 8000, sig); done++;
@@ -564,7 +577,7 @@ async function scanNetwork(hosts, ports, onProg, sig, conc = 64) {
   if (sig && sig.aborted) return { nodes, otros };
   await pool(alive.slice(0, 60), async (a) => {
     const r = await probeApi(a.host, a.port, a.tls, 12000, sig); done++;
-    if (r.ok) nodes.push(a); else otros.push({ ...a, why: r.err === "timeout" ? "no contestó a tiempo" : "no deja que el portal le hable" });
+    if (r.ok) nodes.push(a); else otros.push({ ...a, why: r.err === "timeout" ? "no contestó a tiempo" : r.html ? "es una página web, no un nodo (router, impresora, cámara…)" : "no deja que el portal le hable" });
     onProg(done, total + lentos.length + alive.length, nodes, "confirmando");
   }, 8);
   return { nodes, otros };
@@ -611,6 +624,10 @@ function openConnDialog(tab0) {
   const addrIn = el("input", { class: "inp", placeholder: "192.168.1.10", autocomplete: "off", inputmode: "url" });
   const res = el("div", { class: "muted small", style: "min-height:1.2em" });
   let scanCtl = null; const scanBox = el("div", { class: "scanbox" });
+  /* En el programa de Windows: las redes de esta PC y la tabla de vecinos, para no adivinar la red */
+  let redesPC = null, vecinosPC = null, escaneadas = new Set(), avzAbierto = false;
+  const nn = NAT();
+  if (nn && nn.redes) nn.redes().then((r) => { redesPC = Array.isArray(r) ? r : []; if (!scanCtl) drawScan(); }).catch(() => { redesPC = []; });
   const fmtAddr = (f) => f.host + (f.port !== (f.tls ? 443 : 80) ? ":" + f.port : "");
   const useFound = (f) => { addrIn.value = fmtAddr(f); tls = f.tls; draw(); res.textContent = "Dirección cargada: " + fmtAddr(f) + (f.tls ? " (HTTPS)" : ""); };
   const drawScan = () => {
@@ -620,20 +637,30 @@ function openConnDialog(tab0) {
     const ex = el("input", { class: "inp", value: c.extra, placeholder: "8080, 8443", style: "width:130px", autocomplete: "off", disabled: busy, onchange: (e) => scanSave({ extra: e.target.value }) });
     const list = el("div", { class: "scanres" }), prog = el("div", { class: "muted small" }), bar = el("div", { class: "pbar" }, el("i", {}));
     const byHost = (a, b) => a.host.localeCompare(b.host, undefined, { numeric: true });
-    const nodeRow = (f) => el("div", { class: "destit" }, el("b", {}, fmtAddr(f)), el("small", {}, f.tls ? "HTTPS" : "HTTP"), el("button", { class: "mini acc", onclick: () => useFound(f) }, "Usar"));
-    const otroRow = (f) => el("div", { class: "destit otro" }, el("b", {}, fmtAddr(f)), el("small", {}, "responde, pero " + f.why),
+    const vec = (h) => (vecinosPC || []).find((v) => v.ip === h);
+    const espTag = (h) => { const v = vec(h); return v && v.fabricante ? el("span", { class: "esptag", title: "Placa de red Espressif (" + v.mac + "): el chip ESP32 de la Heltec V3 y la mayoría de los nodos con WiFi" }, "ESP32") : null; };
+    const nodeRow = (f) => el("div", { class: "destit" }, el("b", {}, fmtAddr(f), espTag(f.host)), el("small", {}, f.tls ? "HTTPS" : "HTTP"), el("button", { class: "mini acc", onclick: () => useFound(f) }, "Usar"));
+    const otroRow = (f) => el("div", { class: "destit otro" + (vec(f.host) && vec(f.host).fabricante ? " esp" : "") }, el("b", {}, fmtAddr(f), espTag(f.host)), el("small", {}, "responde, pero " + f.why),
       el("button", { class: "mini", title: "Probar esta dirección y ver el motivo exacto", onclick: async (e) => { e.target.disabled = true; e.target.textContent = "Probando…"; const d = await diagNode(fmtAddr(f), f.tls, 8000); e.target.disabled = false; e.target.textContent = "Probar"; if (d.ok) { useFound(f); toast("Es un nodo: dirección cargada", "ok"); } else toast(d.msg, "err"); } }, "Probar"),
       el("button", { class: "mini", title: "Cargar igual esta dirección para intentar conectar", onclick: () => useFound(f) }, "Usar igual"));
     const MAXO = 12;
-    const showRes = (box, nodes, otros) => box && box.replaceChildren(...[
-      ...nodes.sort(byHost).map(nodeRow),
+    /* placas ESP32 que están en la red pero no contestaron en los puertos revisados */
+    const espSueltas = (nodes, otros) => (vecinosPC || []).filter((v) => v.fabricante && escaneadas.has(v.ip) && !nodes.some((n) => n.host === v.ip) && !otros.some((o) => o.host === v.ip));
+    const espRow = (v) => el("div", { class: "destit otro esp" }, el("b", {}, v.ip, espTag(v.ip)), el("small", {}, "está en la red, pero no contestó en esos puertos"),
+      el("button", { class: "mini", title: "Probar los puertos 80, 443, 8080 y 8443 de esta placa", onclick: () => run([v.ip], [{ port: 80, tls: false }, { port: 443, tls: true }, { port: 8080, tls: false }, { port: 8443, tls: true }], "Puertos de " + v.ip) }, "Probar puertos"));
+    /* primero las placas ESP32: son las candidatas a ser el nodo */
+    const porEsp = (a, b) => ((vec(b.host) || {}).fabricante ? 1 : 0) - ((vec(a.host) || {}).fabricante ? 1 : 0) || byHost(a, b);
+    const showRes = (box, nodes, otros) => { if (!box) return; const sueltas = espSueltas(nodes, otros); box.replaceChildren(...[
+      ...nodes.sort(porEsp).map(nodeRow),
       otros.length ? el("div", { class: "blkh sub" }, "Otros equipos que respondieron (" + otros.length + ")") : null,
-      ...otros.sort(byHost).slice(0, MAXO).map(otroRow),
-      otros.length > MAXO ? el("div", { class: "muted small" }, "y " + (otros.length - MAXO) + " más") : null].filter(Boolean));
+      ...otros.sort(porEsp).slice(0, MAXO).map(otroRow),
+      otros.length > MAXO ? el("div", { class: "muted small" }, "y " + (otros.length - MAXO) + " más") : null,
+      sueltas.length ? el("div", { class: "blkh sub" }, "Placas ESP32 en la red (" + sueltas.length + ")") : null,
+      ...sueltas.slice(0, MAXO).map(espRow)].filter(Boolean)); };
     /* Si lo escrito tiene direcciones completas (o hay una en el cuadro de arriba), se ofrece revisar su red entera:
        es el error más común, escribir 192.168.1.10 en vez de 192.168.1. */
     const sugRow = () => {
-      const txt = pre.value || "", yaRed = new Set(txt.split(/[\s,;]+/).filter((t) => /^\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(t)));
+      const txt = pre.value || "", yaRed = new Set(txt.split(/[\s,;]+/).map((t) => (t.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})(?:\.\*|\.0\/24|\.\d{1,3}-\d{1,3})?$/) || [])[1]).filter(Boolean));
       const cand = new Set();
       for (const t of txt.split(/[\s,;]+/).filter(Boolean)) { const r = red24(t); if (r && !yaRed.has(r)) cand.add(r); }
       const ra = red24(cleanAddr(addrIn.value).replace(/:\d+$/, "")); if (ra && !yaRed.has(ra)) cand.add(ra);
@@ -644,11 +671,23 @@ function openConnDialog(tab0) {
     };
     const portsList = () => { const c = scanCfg(), l = []; if (c.p80) l.push({ port: 80, tls: false }); if (c.p443) l.push({ port: 443, tls: true }); for (const t of String(c.extra).split(/[\s,;]+/).filter(Boolean)) { const n = +t; if (n > 0 && n < 65536 && !l.some((x) => x.port === n)) l.push({ port: n, tls: n === 443 || n === 8443 }); } return l; };
     const run = async (hosts, ports, what) => {
+      const propias = new Set((redesPC || []).map((x) => x.ip));
+      hosts = hosts.filter((h) => !propias.has(h)); /* la PC no es el nodo */
       if (!hosts.length) return toast("Escribí al menos una red válida, por ejemplo 192.168.1", "err");
       if (!ports.length) return toast("Elegí al menos un puerto", "err");
       scanCtl = new AbortController(); const sig = scanCtl.signal; drawScan(); const L = $(".scanbox .scanres"), P = $(".scanbox .pbar i"), T = $(".scanbox .scantxt");
-      const t0 = Date.now();
-      const r = await scanNetwork(hosts, ports, (d, n, f, fase) => { if (P) P.style.width = Math.round((d / Math.max(1, n)) * 100) + "%"; if (T) T.textContent = what + " · " + (fase === "confirmando" ? "confirmando candidatos" : "recorriendo direcciones") + ": " + d + " de " + n + " · nodos: " + f.length; if (fase === "confirmando") showRes(L, f, []); }, sig);
+      const t0 = Date.now(); escaneadas = new Set(hosts);
+      /* direcciones de las redes de la PC: ahí la tabla de vecinos dice si hay un equipo o no */
+      const locales = new Set(hostsOf((redesPC || []).flatMap((x) => x.tramos || []).join(" ")));
+      /* Toda la lista es de la red de la PC: la tabla de vecinos rescata a los lentos, así que la primera
+         pasada puede ser corta y más en paralelo (una conexión TCP es barata). */
+      const todoLocal = locales.size && hosts.every((h) => locales.has(h));
+      const opts = nn && nn.vecinos && locales.size ? { ...(todoLocal ? { msVivo: 1200, conc: 192 } : {}), filtroLentos: async (l) => {
+        const v = await nn.vecinos(); if (!v || !v.length) return l; vecinosPC = v;
+        const vivos = new Set(v.map((x) => x.ip)); return l.filter((a) => !locales.has(a.host) || vivos.has(a.host));
+      } } : {};
+      const r = await scanNetwork(hosts, ports, (d, n, f, fase) => { if (P) P.style.width = Math.round((d / Math.max(1, n)) * 100) + "%"; if (T) T.textContent = what + " · " + (fase === "confirmando" ? "confirmando candidatos" : "recorriendo direcciones") + ": " + d + " de " + n + " · nodos: " + f.length; if (fase === "confirmando") showRes(L, f, []); }, sig, 64, opts);
+      if (nn && nn.vecinos) { try { vecinosPC = (await nn.vecinos()) || vecinosPC; } catch (e) { /* sin tabla de vecinos */ } }
       const stopped = sig.aborted; scanCtl = null; drawScan(); const L2 = $(".scanbox .scanres"), T2 = $(".scanbox .scantxt");
       const seg = Math.round((Date.now() - t0) / 1000);
       const rango = hosts.length > 3 ? hosts.length + " direcciones (" + hosts[0] + " a " + hosts[hosts.length - 1] + ")" : hosts.join(", ");
@@ -658,20 +697,47 @@ function openConnDialog(tab0) {
           ? (r.otros.length >= 15
               ? "Respondieron " + r.otros.length + " direcciones: parece que algo en la red (un proxy o un portal cautivo) contesta por todas. En este caso el barrido no sirve: escribí a mano la IP del nodo en el cuadro de arriba y tocá “Probar conexión”."
               : "Ningún nodo confirmado, pero " + r.otros.length + " equipo(s) respondieron: mirá la lista, puede que uno sea tu nodo.")
-          : "No respondió nadie. Revisá que el nodo tenga el WiFi y el servidor web activados, que esta PC esté en la misma red y que la red escrita arriba sea la correcta.");
+          : espSueltas(r.nodes, r.otros).length
+            ? "Ningún nodo contestó, pero hay " + espSueltas(r.nodes, r.otros).length + " placa(s) ESP32 en la red (abajo). Puede ser tu nodo con la interfaz web apagada, o otro aparato con ESP32 (enchufes, cámaras). Probá sus puertos o conectá el nodo por USB."
+            : "No respondió nadie. Revisá que el nodo tenga el WiFi y el servidor web activados, que esta PC esté en la misma red y que la red escrita arriba sea la correcta.");
       showRes(L2, r.nodes, r.otros);
       if (r.nodes.length === 1 && !stopped) useFound(r.nodes[0]);
     };
-    scanBox.replaceChildren(el("div", { class: "blkh" }, "Buscar el nodo en la red"),
-      el("small", { class: "muted" }, "El portal recorre las direcciones de la red en dos pasadas: primero ve cuáles responden y después confirma cuáles son nodos. Tarda unos segundos. Un navegador no puede hacer un escaneo de puertos completo: solo detecta nodos con la interfaz web (HTTP/HTTPS) activa."),
+    /* redes de esta PC (solo el programa de Windows) */
+    const utiles = (redesPC || []).filter((x) => !x.virtual), virtuales = (redesPC || []).filter((x) => x.virtual);
+    let guardado = false; try { guardado = !!JSON.parse(localStorage.getItem(SCAN_KEY) || "{}").prefixes; } catch (e) {}
+    if (utiles.length && !guardado) pre.value = utiles.flatMap((x) => x.tramos).join(", ");
+    const redTxt = (x) => x.tramos.length === 1 ? x.tramos[0].replace(/\.(\d+)-(\d+)$/, ".$1 a .$2") : x.red;
+    const buscarMiRed = (lista) => run(hostsOf(lista.flatMap((x) => x.tramos).join(" ")), portsList(), lista.length === 1 ? "Red " + lista[0].tipo + " de esta PC" : "Redes de esta PC");
+    const redRow = (x) => el("div", { class: "mired-it" + (x.virtual ? " virt" : "") },
+      el("div", {}, el("b", {}, x.tipo + " · " + x.ip), x.principal ? el("span", { class: "esptag ok" }, "sale a Internet") : null, x.virtual ? el("span", { class: "esptag gris" }, "adaptador virtual") : null,
+        el("small", {}, x.nombre + " · red " + x.red + " · " + x.direcciones + " direcciones" + (x.recortada ? " · la red es muy grande (/" + x.prefijo + "): se revisa solo el tramo de esta PC" : ""))),
+      el("button", { class: "mini" + (x.virtual ? "" : " acc"), disabled: busy, title: "Revisar " + redTxt(x), onclick: () => buscarMiRed([x]) }, "Buscar acá"));
+    const bloqueRedes = redesPC === null || !nn || !nn.redes ? null
+      : el("div", { class: "mired" }, el("div", { class: "blkh sub" }, "Redes de esta PC"),
+        utiles.length ? null : el("div", { class: "muted small aviso" }, "Esta PC no está conectada a ninguna red" + (virtuales.length ? " (solo a adaptadores virtuales)" : "") + ". Conectala al mismo WiFi o cable que el nodo, o al punto de acceso del propio nodo, y volvé a abrir esta ventana."),
+        ...utiles.map(redRow), ...virtuales.map(redRow));
+    const detener = el("button", { class: "btn ghost", onclick: () => scanCtl && scanCtl.abort() }, "Detener");
+    const btnEscritas = el("button", { class: utiles.length ? "btn ghost" : "btn", onclick: () => { const h = hostsOf(pre.value); scanSave({ prefixes: pre.value }); run([...new Set([...h, "192.168.42.1", "192.168.4.1"])], portsList(), "Red"); } }, utiles.length ? "Buscar en las redes escritas" : "Buscar nodos en la red");
+    const btnPuertos = el("button", { class: "btn ghost", title: "Prueba los puertos 80, 443, 8080 y 8443 de la dirección escrita arriba", onclick: () => { const a = cleanAddr(addrIn.value).replace(/:\d+$/, ""); if (!a) return toast("Escribí primero la dirección IP en el cuadro de arriba", "err"); run([a], [{ port: 80, tls: false }, { port: 443, tls: true }, { port: 8080, tls: false }, { port: 8443, tls: true }], "Puertos de " + a); } }, "Escanear puertos de la dirección escrita");
+    const manual = [
       row("Redes a revisar", "Poné los TRES primeros números: 192.168.1 revisa de .1 a .254. También valen 192.168.1.* , 192.168.1.0/24 y un tramo como 192.168.1.10-40. Si escribís una dirección completa se revisa solo esa. Varias separadas por coma. Además se prueban las direcciones de fábrica del punto de acceso del nodo.", pre),
       sugRow(),
-      row("Puertos", "80 = HTTP (lo normal). Marcá 443 solo si tu nodo usa HTTPS: hay que aceptarle el certificado a mano una vez, y duplica el tiempo de búsqueda.", el("div", { class: "inlrow" }, ck("p80", "80 HTTP"), ck("p443", "443 HTTPS"), ex)),
-      el("div", { class: "rowbtn chips" },
-        busy ? el("button", { class: "btn ghost", onclick: () => scanCtl && scanCtl.abort() }, "Detener")
-          : el("button", { class: "btn", onclick: () => { const h = hostsOf(pre.value); scanSave({ prefixes: pre.value }); run([...new Set([...h, "192.168.42.1", "192.168.4.1"])], portsList(), "Red"); } }, "Buscar nodos en la red"),
-        busy ? el("span") : el("button", { class: "btn ghost", title: "Prueba los puertos 80, 443, 8080 y 8443 de la dirección escrita arriba", onclick: () => { const a = cleanAddr(addrIn.value).replace(/:\d+$/, ""); if (!a) return toast("Escribí primero la dirección IP en el cuadro de arriba", "err"); run([a], [{ port: 80, tls: false }, { port: 443, tls: true }, { port: 8080, tls: false }, { port: 8443, tls: true }], "Puertos de " + a); } }, "Escanear puertos de la dirección escrita")),
-      busy ? bar : el("span"), el("div", { class: "muted small scantxt" }, prog.textContent || ""), list);
+      row("Puertos", "80 = HTTP (lo normal). Marcá 443 solo si tu nodo usa HTTPS: hay que aceptarle el certificado a mano una vez, y duplica el tiempo de búsqueda.", el("div", { class: "inlrow" }, ck("p80", "80 HTTP"), ck("p443", "443 HTTPS"), ex))];
+    const salida = [busy ? bar : el("span"), el("div", { class: "muted small scantxt" }, prog.textContent || ""), list];
+    /* En el programa, con la red de la PC detectada: arriba el botón y los resultados; lo manual, plegado */
+    const cuerpo = utiles.length
+      ? [bloqueRedes,
+        el("div", { class: "rowbtn chips" }, busy ? detener : el("button", { class: "btn", onclick: () => buscarMiRed(utiles) }, "Buscar en la red de esta PC" + (utiles.length === 1 ? " (" + redTxt(utiles[0]) + ")" : ""))),
+        ...salida,
+        el("details", { class: "scanavz", open: avzAbierto, ontoggle: (e) => (avzAbierto = e.target.open) }, el("summary", {}, "Otras redes y puertos"),
+          ...manual, el("div", { class: "rowbtn chips" }, busy ? el("span") : btnEscritas, busy ? el("span") : btnPuertos))]
+      : [bloqueRedes, ...manual, el("div", { class: "rowbtn chips" }, busy ? detener : btnEscritas, busy ? el("span") : btnPuertos), ...salida];
+    scanBox.replaceChildren(el("div", { class: "blkh" }, "Buscar el nodo en la red"),
+      el("small", { class: "muted" }, IS_DESK && nn && nn.redes
+        ? "El programa toma la red a la que está conectada esta PC y prueba cada dirección de verdad. Después lee la tabla de vecinos de Windows y marca las placas con chip ESP32 (el de la Heltec V3): son las candidatas a ser el nodo."
+        : "El portal recorre las direcciones de la red en dos pasadas: primero ve cuáles responden y después confirma cuáles son nodos. Tarda unos segundos. Un navegador no puede hacer un escaneo de puertos completo: solo detecta nodos con la interfaz web (HTTP/HTTPS) activa."),
+      ...cuerpo.filter(Boolean));
   };
   drawScan();
   const draw = () => {

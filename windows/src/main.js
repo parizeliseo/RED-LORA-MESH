@@ -160,6 +160,8 @@ function permisos() {
 ipcMain.handle("app:version", () => ({ version: app.getVersion(), electron: process.versions.electron, sistema: os.type() + " " + os.release(), datos: app.getPath("userData") }));
 
 ipcMain.handle("red:probe", (_e, host, puerto, ms) => red.probe(host, puerto, ms));
+ipcMain.handle("red:redes", () => red.redesLocales().catch(() => []));
+ipcMain.handle("red:vecinos", () => red.vecinos().catch(() => []));
 ipcMain.handle("red:http", async (_e, url, metodo, cuerpo, ms) => {
   try { return await red.pedir(url, metodo, cuerpo, ms); }
   catch (e) { return { falla: true, mensaje: e.message, kind: e.kind || "red" }; }

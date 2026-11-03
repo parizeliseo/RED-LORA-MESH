@@ -38,7 +38,7 @@ def build(pages=None):
     return f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Instructivo OPEN SOURCE PARIZ</title><style>{css}</style></head><body>
 <section class="cover"><div class="cv-top"><div class="logo">▲</div><div><b>OPEN SOURCE PARIZ</b><br><small>Sistema LoRa Mesh</small></div></div>
 <div class="cv-mid"><div class="kicker">INSTRUCTIVO DE USUARIO</div><h1>Portal de comunicaciones<br>LoRa Mesh</h1><p>Guía completa, paso a paso, con capturas de pantalla: conexión del nodo, mensajes, emergencias, nodos y mapa, MQTT, sonidos y configuración.</p></div>
-<div class="cv-bot"><div><b>Versión</b><br>1.10</div><div><b>Fecha</b><br>1 de noviembre de 2026</div><div><b>Equipo de referencia</b><br>Heltec V3 · firmware 2.8.1</div></div></section>
+<div class="cv-bot"><div><b>Versión</b><br>1.11</div><div><b>Fecha</b><br>3 de noviembre de 2026</div><div><b>Equipo de referencia</b><br>Heltec V3 · firmware 2.8.1</div></div></section>
 <section class="tocp"><h2 class="toch">Contenido</h2><ol class="toc">{toc}</ol>
 <div class="howto"><b>Cómo leer este instructivo</b><p>Los números rojos de las capturas se explican en la lista numerada que está debajo de cada figura. Los recuadros <span class="tag tip">Consejo</span> <span class="tag note">Nota</span> y <span class="tag warn">Importante</span> destacan información que conviene no pasar por alto.</p></div></section>
 {body}</body></html>"""

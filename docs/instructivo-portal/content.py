@@ -190,6 +190,7 @@ ch("Mapa",
          "El panel <b>Capas</b> activa o apaga etiquetas, enlaces directos (coloreados por SNR), vecinos, rastros de movimiento, cobertura medida, waypoints, cuadrícula, anillos de distancia y mapas base (calles, topográfico, satélite, IGN Argentina, etc.)."]),
  ("note", "El color del borde de cada nodo es el <b>semáforo</b> (verde, amarillo, rojo intermitente o gris). Se explica en el capítulo 14.") ,
  ("note", "Los mapas base necesitan Internet. Sin Internet se ven los nodos y las capas propias sobre fondo liso, y los mapas ya visitados se guardan para uso sin conexión."),
+ ("warn", "<b>Mapa de calles (OpenStreetMap) en el navegador:</b> ese servicio exige que quien pide el mapa se identifique, y el portal abierto como archivo no puede hacerlo: en vez del mapa aparecen carteles <i>«Access blocked»</i>. Por eso, en el navegador el portal usa de fábrica el mapa <b>Político (CARTO)</b>, que muestra los mismos datos de OpenStreetMap. Las aplicaciones para Android y Windows sí se identifican y muestran el mapa de calles sin problemas."),
 )
 
 ch("Internet y MQTT",

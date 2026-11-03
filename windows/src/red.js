@@ -15,6 +15,7 @@ const net = require("net");
 const http = require("http");
 const https = require("https");
 const os = require("os");
+const AGENTE = "OPEN-SOURCE-PARIZ/" + (() => { try { return require("../package.json").version; } catch (e) { return "?"; } })() + " (Windows; +https://github.com/parizeliseo/RED-LORA-MESH)";
 const fs = require("fs");
 const dgram = require("dgram");
 const { execFile } = require("child_process");
@@ -53,7 +54,9 @@ function pedir(url, metodo, cuerpo, ms) {
     const datos = cuerpo && cuerpo.length ? Buffer.from(cuerpo) : null;
     const op = {
       method: metodo || "GET",
-      headers: { Accept: "application/x-protobuf" },
+      /* el nodo habla protobuf; el resto (teselas del mapa) son imágenes. OpenStreetMap exige que la
+         aplicación se identifique: sin esto responde con un cartel de "Access blocked". */
+      headers: { Accept: u.pathname.startsWith("/api/") ? "application/x-protobuf" : "image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5", "User-Agent": AGENTE },
       timeout: Math.max(200, ms | 0 || 5000),
     };
     if (datos) { op.headers["Content-Type"] = "application/x-protobuf"; op.headers["Content-Length"] = datos.length; }

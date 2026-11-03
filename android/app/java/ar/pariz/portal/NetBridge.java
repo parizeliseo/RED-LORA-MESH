@@ -65,6 +65,16 @@ public class NetBridge {
         } });
     }
 
+    private String ua = null;
+    private String agente() {
+        if (ua == null) {
+            String v = "";
+            try { v = act.getPackageManager().getPackageInfo(act.getPackageName(), 0).versionName; } catch (Exception e) { v = "?"; }
+            ua = "OPEN-SOURCE-PARIZ/" + v + " (Android; +https://github.com/parizeliseo/RED-LORA-MESH)";
+        }
+        return ua;
+    }
+
     /** Pedido HTTP completo. Devuelve {"status":200,"body":"<base64>"} o un error. */
     public void http(final int id, final String url, final String method, final String bodyB64, final int ms) {
         pool.execute(new Runnable() { public void run() {
@@ -78,7 +88,10 @@ public class NetBridge {
                 c.setReadTimeout(Math.max(200, ms));
                 c.setRequestMethod(method == null ? "GET" : method);
                 c.setInstanceFollowRedirects(true);
-                c.setRequestProperty("Accept", "application/x-protobuf");
+                /* el nodo habla protobuf; el resto (teselas del mapa) son imágenes. OpenStreetMap exige
+                   que la aplicación se identifique: sin esto responde con un cartel de "Access blocked". */
+                c.setRequestProperty("Accept", u.getPath().startsWith("/api/") ? "application/x-protobuf" : "image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5");
+                c.setRequestProperty("User-Agent", agente());
                 if (bodyB64 != null && bodyB64.length() > 0) {
                     byte[] body = Base64.decode(bodyB64, Base64.NO_WRAP);
                     c.setDoOutput(true);

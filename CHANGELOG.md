@@ -5,6 +5,53 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.11 — 3 de noviembre de 2026
+
+### La app de Android se ajusta a la pantalla del celular
+
+En un teléfono (412 px de ancho, como la mayoría) varias pantallas no entraban: la barra de arriba
+ocupaba dos renglones, las pestañas de *Configuración del módulo* llenaban media pantalla y las
+tablas de Nodos y Telemetría medían tres veces el ancho del teléfono. Ahora:
+
+- **Barra de arriba en un solo renglón** (de 85 a 48 px): menú, hora UTC y local, el botón rojo
+  **SOS** (el de EMERGENCIAS, abreviado) y los tres botones de estado. Entra desde 340 px; por
+  debajo de 390 px la hora se muestra sin segundos. El botón del puente de Python no aparece en
+  pantallas de celular, donde ese puente no puede funcionar.
+- **Pestañas deslizables** en Configuración del módulo, del dispositivo y Ajustes: un solo
+  renglón que se desliza con el dedo, con la pestaña elegida a la vista y un degradado que avisa
+  que hay más (de 267 a 42 px en Módulo).
+- **Nodos como tarjetas**: nombre, estado y función arriba; última vez, señal, saltos, batería y
+  distancia abajo. Un selector elige el orden. Siguen dibujándose solo las visibles, así que
+  conservan la fluidez con cientos de nodos.
+- **Telemetría como tarjetas**: cada nodo con una grilla de 3 × 3 valores con su nombre.
+- **Libro de guardia como tarjetas**: tipo, nodo, hora, canal y detalle.
+- Las tarjetas se usan hasta 820 px, así que también sirven en tablets.
+- El **detalle de telemetría** ya no se pasa de ancho: el gráfico estiraba toda la página.
+- La hora y el selector del gráfico se ajustan; ninguna pantalla se sale de 360 ni de 412 px.
+
+### El mapa de calles dejaba de verse
+
+OpenStreetMap exige que quien pide el mapa se identifique, y el portal pedía las teselas sin
+identificarse: en la app de Android y en la de Windows el mapa de calles (el de fábrica) se veía
+lleno de carteles *«Access blocked»*. Ahora las dos apps piden las teselas por su propia red,
+identificándose como `OPEN-SOURCE-PARIZ/<versión>`, y al actualizar borran las teselas del cartel
+que hubieran quedado guardadas. En el navegador, donde el portal abierto como archivo no puede
+identificarse, el mapa de fábrica pasa a ser el Político de CARTO, con los mismos datos de
+OpenStreetMap.
+
+### La dirección del servidor oficial ya no se ve
+
+En *Configuración del módulo → MQTT* y en *Ajustes → Internet y MQTT*, el campo del servidor
+oficial mostraba su dirección. Ahora aparece vacío con el texto *Servidor oficial de la red*, y si no
+se toca, al guardar se conserva la dirección original.
+
+### Instructivos
+
+- Capturas nuevas de la app de Android, y explicación de la barra, las pestañas y las tarjetas.
+- El instructivo del portal explica por qué el mapa de calles no anda desde el navegador.
+
+---
+
 ## 1.10 — 1 de noviembre de 2026
 
 ### El puente MQTT dice si de verdad está conectado

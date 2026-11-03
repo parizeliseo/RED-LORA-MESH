@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.10", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.11", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 const IS_DESK = typeof window !== "undefined" && !!window.__escritorio; /* aplicación de Windows: red, puente MQTT, avisos e impresión los da el programa */
 const ESC = () => (IS_DESK ? window.__escritorio : null);
@@ -1374,7 +1374,22 @@ function renderMain() {
   if (!connected() && !(S.view === "settings" && (S.sub === "portal.net" || S.sub === "portal.snd" || S.sub === "portal.ops" || S.sub === "portal.perf" || S.sub === "portal.copia" || S.sub === "portal.gps")) && S.view !== "emerg" && S.view !== "guardia" && S.view !== "topo") return m.append(connectScreen());
   if (S.status === ST.DeviceConfiguring || S.status === ST.DeviceConnecting) m.append(el("div", { class: "banner" }, "Descargando la configuración del nodo… puede tardar unos segundos con muchos nodos."));
   ({ messages: viewMessages, nodes: viewNodes, tele: viewTele, map: viewMap, settings: viewSettings, radio: viewSettings, device: viewSettings, module: viewSettings, console: viewConsole, emerg: viewEmerg, guardia: viewGuardia, topo: viewTopo }[S.view] || viewMessages)(m);
-  a11ySweep(m);
+  a11ySweep(m); pestanasDeslizables(m);
+}
+/* Pestañas que no entran a lo ancho (celular): se deslizan en un solo renglón, la elegida queda a la
+   vista y un degradado al borde avisa que hay más. Así no ocupan media pantalla. */
+function pestanasDeslizables(root) {
+  requestAnimationFrame(() => {
+    for (const t of root.querySelectorAll(".tabs")) {
+      const sobra = t.scrollWidth > t.clientWidth + 2;
+      t.classList.toggle("desliza", sobra);
+      if (!sobra) continue;
+      const on = t.querySelector(".tab.on");
+      if (on) t.scrollLeft = Math.max(0, on.offsetLeft - t.offsetLeft - 12);
+      const fin = () => t.classList.toggle("fin", t.scrollLeft + t.clientWidth >= t.scrollWidth - 4);
+      fin(); t.addEventListener("scroll", fin, { passive: true });
+    }
+  });
 }
 
 function connectScreen() {
@@ -1581,8 +1596,11 @@ function vlist(box, o) { /* lista de alturas variables (mensajes) */
     rendered: () => cache.size, count: () => items.length };
   return api;
 }
-function vtable(holder, scroller, head, rows, mk, cols, rh = 54) { /* tabla de filas de igual altura */
-  const OV = 8, tb = el("tbody"), tbl = el("table", { class: "tbl vt" + (rh < 45 ? " s" : "") }, head, tb), sp = () => el("tr", { class: "vsp" }, el("td", { colspan: cols, style: "padding:0;border:0;height:0" }));
+function vtable(holder, scroller, head, rows, mk, cols, rh = 54, cls = "") { /* tabla de filas de igual altura */
+  const OV = 8, tb = el("tbody"), tbl = el("table", { class: "tbl vt" + (rh < 45 ? " s" : "") + (cls ? " " + cls : "") }, head, tb), sp = () => el("tr", { class: "vsp" }, el("td", { colspan: cols, style: "padding:0;border:0;height:0" }));
+  /* en el celular, las tablas con clase propia se ven como tarjetas: cada celda lleva el nombre de su columna */
+  const rotulos = cls ? [...head.querySelectorAll("th")].map((x) => x.textContent.replace(/ [▲▼]$/, "")) : null;
+  const mkR = !rotulos ? mk : (r, i) => { const tr = mk(r, i); [...tr.children].forEach((td, k) => { if (rotulos[k]) td.dataset.l = rotulos[k]; if (td.textContent === "—") td.classList.add("vac"); }); return tr; };
   const top = sp(), bot = sp(); let A = -1, B = -1, raf = 0;
   const draw = (force) => {
     raf = 0; const vh = scroller.clientHeight || 600;
@@ -1590,7 +1608,7 @@ function vtable(holder, scroller, head, rows, mk, cols, rh = 54) { /* tabla de f
     const y0 = Math.max(0, off), i0 = Math.max(0, Math.floor(y0 / rh) - OV), i1 = Math.min(rows.length, Math.ceil((y0 + vh) / rh) + OV);
     if (!force && i0 === A && i1 === B) return; A = i0; B = i1;
     top.firstChild.style.height = i0 * rh + "px"; bot.firstChild.style.height = (rows.length - i1) * rh + "px";
-    tb.replaceChildren(top, ...rows.slice(i0, i1).map((r, k) => mk(r, i0 + k)), bot);
+    tb.replaceChildren(top, ...rows.slice(i0, i1).map((r, k) => mkR(r, i0 + k)), bot);
     const r1 = tb.querySelector("tr:not(.vsp)"); const real = r1 ? r1.getBoundingClientRect().height : 0; /* si las filas miden otra cosa, se corrige y se vuelve a dibujar */
     if (real && Math.abs(real - rh) > 1 && !tbl._fixed) { rh = real; tbl._fixed = true; draw(true); }
   };
@@ -1660,6 +1678,9 @@ function viewNodes(m) {
     el("header", { class: "ph" }, el("h2", { id: "nodeh" }, `Nodos (${S.nodes.size})`),
       el("div", { class: "phr" }, el("input", { class: "inp", type: "search", placeholder: "Buscar…", value: S.search, oninput: (e) => { S.search = e.target.value; renderNodesTable(); } }),
         el("button", { class: "btn ghost nftoggle", id: "nftoggle", "aria-expanded": "false", "aria-controls": "nodef", onclick: (e) => { const b = $("#nodef"), on = !b.classList.contains("abierto"); b.classList.toggle("abierto", on); e.currentTarget.setAttribute("aria-expanded", on ? "true" : "false"); } }, "Filtros"),
+        el("select", { class: "inp nsort", "aria-label": "Ordenar los nodos", onchange: (e) => { const [k, d] = e.target.value.split("|"); nodesSort = { k, dir: +d }; renderNodesTable(); } },
+          [["lastHeard|-1", "Más recientes primero"], ["name|1", "Por nombre"], ["snr|-1", "Mejor señal primero"], ["hops|1", "Más cercanos en saltos"], ["battery|1", "Batería más baja primero"], ["dist|1", "Más cerca primero"]]
+            .map(([v, l]) => el("option", { value: v, selected: v === nodesSort.k + "|" + nodesSort.dir }, l))),
         el("button", { class: "btn ghost", onclick: exportNodes }, "Exportar CSV"))),
     el("div", { class: "nodef", id: "nodef" }),
     el("div", { class: "tblwrap", id: "nodetbl" })));
@@ -1680,7 +1701,7 @@ function renderNodesTable() {
       el("td", {}, ago(n.lastHeard)),
       el("td", { class: n.snr == null ? "" : n.snr >= 3 ? "snr-g" : n.snr >= -7 ? "snr-w" : "snr-b" }, n.snr != null ? n.snr.toFixed(1) + " dB" : "—"),
       el("td", {}, n.num === S.me ? "Este nodo" : n.hops == null ? (n.viaMqtt ? "Vía MQTT" : "Desconocido") : (n.hops === 0 ? "Directo" : n.hops + (n.hops === 1 ? " salto" : " saltos")) + (n.viaMqtt ? ", vía MQTT" : "")),
-      el("td", {}, battText(n.battery)),
+      el("td", { class: n.battery > 100 ? "enchufe" : "" }, battText(n.battery)),
       el("td", {}, dist != null ? fmtDist(dist) : "—"),
       el("td", {}, n.num === S.me ? null : el("div", { class: "acts" }, [
         el("button", { class: "mini", title: "Ver detalle del nodo", onclick: () => openNodeSheet(n.num) }, "Detalle"),
@@ -1688,7 +1709,7 @@ function renderNodesTable() {
         el("button", { class: "mini", title: "Trazar ruta", onclick: () => nodeAction("trace", n) }, "Ruta"),
         el("button", { class: "mini", title: "Pedir posición", onclick: () => nodeAction("pos", n) }, "Posición"),
         el("button", { class: "mini danger", title: "Quitar del NodeDB", onclick: () => nodeAction("del", n) }, "Quitar")])));
-  const st0 = box.scrollTop; S.nvt = vtable(box, box, head, rows, mkRow, 8, 58); box.scrollTop = st0;
+  const st0 = box.scrollTop; S.nvt = vtable(box, box, head, rows, mkRow, 8, 58, "ntbl"); box.scrollTop = st0;
   if (!rows.length) box.append(el("div", { class: "muted pad" }, nfActive() || S.search ? "Ningún nodo cumple con la búsqueda y los filtros elegidos." : "Todavía no hay nodos en la lista."));
 }
 async function nodeAction(a, n) {
@@ -1927,7 +1948,7 @@ function teleSummary() {
       cell("temperature", g(r, "env", "temperature")), cell("relativeHumidity", g(r, "env", "relativeHumidity")), cell("barometricPressure", g(r, "env", "barometricPressure")), cell("uptimeSeconds", first(r, "uptimeSeconds")),
       el("td", {}, Object.keys(r.t).map((c) => TEL_CATS[c] ? TEL_CATS[c].split(" ")[0] : c).join(", ") || "—"), el("td", {}, upd(r) ? ago(upd(r) / 1000) : "—"));
   const sc = $("#telebody") || holder;
-  vtable(holder, sc, head, rows, mk, 11, 56); return holder;
+  vtable(holder, sc, head, rows, mk, 11, 56, "ttbl"); return holder;
 }
 function teleDetail() {
   const num = S.tui.node || S.me, t = S.tele.get(num) || {};
@@ -2092,6 +2113,18 @@ const LAYER_DEFS = [
 try { Object.assign(S.map, { L: { ...LAYER_DEFAULT, ...(JSON.parse(localStorage.getItem("meshportal:layers") || "{}")) }, ext: [] }); } catch (e) { Object.assign(S.map, { L: { ...LAYER_DEFAULT }, ext: [] }); }
 if (S.map.L.stv !== 1) { S.map.L.color = "estado"; S.map.L.stv = 1; }
 const saveLayers = () => { try { localStorage.setItem("meshportal:layers", JSON.stringify(S.map.L)); } catch (e) {} };
+/* Mapa de calles de OpenStreetMap: el portal abierto como archivo en un navegador no puede
+   identificarse y el servidor responde con un cartel de "Access blocked". Ahí se usa, una sola vez,
+   el mapa político de CARTO (mismos datos de OpenStreetMap). Las aplicaciones sí se identifican. */
+if (!NAT() && location.protocol === "file:" && S.map.L.base === "osm") {
+  let hecho = false; try { hecho = !!localStorage.getItem("meshportal:base-v2"); } catch (e) {}
+  if (!hecho) { S.map.L.base = "political"; saveLayers(); try { localStorage.setItem("meshportal:base-v2", "1"); } catch (e) {} }
+}
+/* las teselas del cartel que hayan quedado guardadas se borran una vez, para que se pidan de nuevo */
+if (NAT()) {
+  let hecho = false; try { hecho = !!localStorage.getItem("meshportal:teselas-osm-v2"); } catch (e) {}
+  if (!hecho) setTimeout(() => tileDB().then((db) => { if (!db) return; try { db.transaction("t", "readwrite").objectStore("t").delete(IDBKeyRange.bound("b-osm/", "b-osm/\uffff")); localStorage.setItem("meshportal:teselas-osm-v2", "1"); } catch (e) {} }), 3000);
+}
 const PALETTE = ["#e11d48", "#2563eb", "#d97706", "#7c3aed", "#0891b2", "#65a30d", "#db2777"];
 let layerSeq = 1;
 
@@ -2355,7 +2388,7 @@ function drawTiles(g, c, L, o) {
 /* ── mapas base en línea (se descargan cuando hay Internet y quedan guardados para usar sin conexión) ── */
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
 const BASES = {
-  osm: { n: "Calles (OpenStreetMap)", u: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", z: 19, a: "© OpenStreetMap" },
+  osm: { n: "Calles (OpenStreetMap)" + (typeof location !== "undefined" && location.protocol === "file:" && !((IS_APP || IS_DESK) && window.__nativeNet) ? " · no anda desde el navegador" : ""), u: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", z: 19, a: "© OpenStreetMap" },
   topo: { n: "Topográfico (OpenTopoMap)", u: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", s: "abc", z: 17, a: "© OpenTopoMap (CC-BY-SA) · datos © OpenStreetMap" },
   esritopo: { n: "Topográfico (Esri)", u: ESRI + "World_Topo_Map/MapServer/tile/{z}/{y}/{x}", z: 19, a: "Esri, HERE, Garmin, USGS, NGA" },
   sat: { n: "Satélite (Esri)", u: ESRI + "World_Imagery/MapServer/tile/{z}/{y}/{x}", z: 19, a: "Esri, Maxar, Earthstar Geographics" },
@@ -2383,8 +2416,20 @@ function tileURL(L, z, x, y) {
   const n = 2 ** z;
   return L.u.replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{-y}", n - 1 - y).replace("{s}", L.s ? L.s[(x + y) % L.s.length] : "");
 }
+/* OpenStreetMap exige que quien pide las teselas se identifique: desde una página sin dirección web
+   (archivo, app) devuelve un cartel de "Access blocked" en lugar del mapa. Las aplicaciones de
+   Android y de Windows las piden por su propia red, identificándose como OPEN SOURCE PARIZ. */
+const tipoImagen = (b) => (b[0] === 0x89 && b[1] === 0x50 ? "image/png" : b[0] === 0xff && b[1] === 0xd8 ? "image/jpeg" : b[0] === 0x52 && b[8] === 0x57 ? "image/webp" : "");
 async function fetchTileBlob(L, z, x, y) {
-  const r = await fetch(tileURL(L, z, x, y), { mode: "cors", referrerPolicy: "no-referrer" });
+  const n = NAT();
+  if (n && n.http) {
+    const r = await n.http(tileURL(L, z, x, y), "GET", null, 15000);
+    if (r.status !== 200) throw new Error("HTTP " + r.status);
+    const b = r.body instanceof Uint8Array ? r.body : new Uint8Array(r.body || []), tipo = tipoImagen(b);
+    if (!b.length || !tipo) throw new Error("no es imagen");
+    return new Blob([b], { type: tipo });
+  }
+  const r = await fetch(tileURL(L, z, x, y), { mode: "cors" });
   if (!r.ok) throw new Error("HTTP " + r.status);
   const b = await r.blob(); if (!b.size || !/image/.test(b.type || "image")) throw new Error("no es imagen");
   return b;
@@ -2395,7 +2440,7 @@ async function loadTile(L, key, z, x, y) {
   try { const b = await fetchTileBlob(L, z, x, y); tilePutDB(key, b); return await createImageBitmap(b); }
   catch (e) {
     // sin CORS: se muestra igual pero no se puede guardar
-    return await new Promise((res) => { const im = new Image(); im.referrerPolicy = "no-referrer"; im.onload = () => createImageBitmap(im).then(res, () => res(null)); im.onerror = () => res(null); im.src = tileURL(L, z, x, y); });
+    return await new Promise((res) => { const im = new Image(); im.onload = () => createImageBitmap(im).then(res, () => res(null)); im.onerror = () => res(null); im.src = tileURL(L, z, x, y); });
   }
 }
 function pumpTiles() {
@@ -3222,7 +3267,7 @@ function viewGuardia(m) {
     cnt.replaceChildren(el("b", {}, list.length + (list.length === 1 ? " registro" : " registros")), el("span", { class: "muted" }, " · "), el("b", { class: "gdcrit" }, crit + (crit === 1 ? " crítico" : " críticos")), el("span", { class: "muted" }, " · período en hora local " + utcOff(new Date()) + " (la columna UTC se exporta aparte)"));
     if (!list.length) { holder.replaceChildren(el("div", { class: "empty" }, "No hay registros en ese período con los filtros elegidos.")); return; }
     const head = el("thead", {}, el("tr", {}, ["Fecha y hora local", "Hora UTC", "Tipo", "Nodo", "Canal / destino", "Detalle"].map((h) => el("th", {}, h))));
-    vtable(holder, holder, head, list, (x) => el("tr", { class: "vrow" + (x.crit ? " crit" : "") }, el("td", { class: "nw" }, fDT(x.t)), el("td", { class: "nw" }, fUTC(x.t)), el("td", { class: "nw" }, x.icon + " " + x.label), el("td", {}, x.node), el("td", {}, x.chan), el("td", { class: "gdtx", title: x.detail }, x.detail)), 6, 40);
+    vtable(holder, holder, head, list, (x) => el("tr", { class: "vrow" + (x.crit ? " crit" : "") }, el("td", { class: "nw" }, fDT(x.t)), el("td", { class: "nw" }, fUTC(x.t)), el("td", { class: "nw" }, x.icon + " " + x.label), el("td", {}, x.node), el("td", {}, x.chan), el("td", { class: "gdtx", title: x.detail }, x.detail)), 6, 40, "gtbl");
   };
   gdUpd = upd;
   box.append(el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Novedades y Libro de Guardia"), el("small", { class: "muted" }, "Filtrá mensajes y eventos críticos por horario y exportalos para el acta o el libro de guardia.")),
@@ -3357,7 +3402,7 @@ function viewSettings(m) {
   const g = GROUPS[S.view] || GROUPS.settings;
   if (!g.items.some((i) => i[0] === S.sub)) S.sub = g.items[0][0];
   const items = g.items.filter(([id]) => !(id.startsWith("mod.") && MOD_NEW.has(id.slice(4))) || S.demo || S.mod[id.slice(4)] || S.sub === id);
-  const left = el("div", { class: "tabs" }, items.map(([id, label]) => el("button", { class: "tab" + (S.sub === id ? " on" : ""), onclick: () => { if (S.form && S.form.isDirty() && !confirm("Tenés cambios sin guardar. ¿Descartarlos?")) return; S.sub = id; S.form = null; renderMain(); } }, label)));
+  const left = el("div", { class: "tabs", role: "tablist" }, items.map(([id, label]) => el("button", { class: "tab" + (S.sub === id ? " on" : ""), onclick: () => { if (S.form && S.form.isDirty() && !confirm("Tenés cambios sin guardar. ¿Descartarlos?")) return; S.sub = id; S.form = null; renderMain(); } }, label)));
   const body = el("section", { class: "setbody", id: "setbody" });
   m.append(el("div", { class: "pagebar" }, el("h1", {}, g.title)), el("div", { class: "setview" }, left, body));
   const sub = S.sub;
@@ -3499,8 +3544,11 @@ function buildForm({ desc, value, only, hide = [], onSave }) {
         const c = el("input", { type: "checkbox", checked: !!v, onchange: onch }); inp = el("label", { class: "sw" }, c, el("span", {}));
         get = () => c.checked; orig = !!v;
       } else if (f.scalar === 9) {
-        const i = el("input", { class: "inp", type: /psk|password/i.test(name) ? "password" : "text", value: v ?? "", oninput: onch, autocomplete: "off" });
-        inp = i; get = () => i.value; orig = v ?? "";
+        /* la dirección del servidor oficial no se muestra: el campo queda vacío con su nombre, y si no se
+           toca se guarda tal como estaba (vacío también significa "el servidor por defecto" para el nodo) */
+        const oficial = typeof v === "string" && /meshtastic/i.test(v);
+        const i = el("input", { class: "inp", type: /psk|password/i.test(name) ? "password" : "text", value: oficial ? "" : v ?? "", placeholder: oficial ? "Servidor oficial de la red" : null, oninput: onch, autocomplete: "off" });
+        inp = i; get = () => (oficial && i.value.trim() === "" ? v : i.value); orig = v ?? "";
       } else if (f.scalar === 12) continue;
       else {
         const fl = f.scalar === 1 || f.scalar === 2, big = [3, 4, 6, 16, 18].includes(f.scalar);
@@ -4417,8 +4465,10 @@ const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 function tickClock() {
   const c = $("#clock"); if (!c) return; const d = new Date();
   const u = c.querySelector(".cu"), l = c.querySelector(".cl"); if (!u || !l) return;
-  u.textContent = p2(d.getUTCHours()) + ":" + p2(d.getUTCMinutes()) + ":" + p2(d.getUTCSeconds());
-  l.textContent = p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
+  /* en pantallas muy angostas (menos de 390 px) la barra entra en un renglón solo sin los segundos */
+  const seg = !matchMedia("(max-width: 389px)").matches; /* igual que las reglas de estilo: no se engaña si algo agranda la página */
+  u.textContent = p2(d.getUTCHours()) + ":" + p2(d.getUTCMinutes()) + (seg ? ":" + p2(d.getUTCSeconds()) : "");
+  l.textContent = p2(d.getHours()) + ":" + p2(d.getMinutes()) + (seg ? ":" + p2(d.getSeconds()) : "");
   c.querySelector(".cz").textContent = utcOff(d);
   c.title = "Hora UTC: " + DIAS[d.getUTCDay()] + " " + p2(d.getUTCDate()) + "/" + p2(d.getUTCMonth() + 1) + "/" + d.getUTCFullYear() + " " + u.textContent + "\nHora local (" + utcOff(d) + "): " + DIAS[d.getDay()] + " " + p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " + l.textContent + "\nSale del reloj de esta computadora.";
 }
@@ -4627,7 +4677,7 @@ function renderTopbar() {
     el("div", { class: "tbtitle" }, el("b", {}, "OPEN SOURCE PARIZ"), el("small", {}, "Sistema LoRa Mesh · LoRa + MQTT")),
     el("div", { class: "grow" }),
     el("div", { class: "clock", id: "clock" }, el("span", { class: "ck1" }, el("small", {}, "UTC"), el("b", { class: "cu" }, "--:--:--")), el("span", { class: "ck1" }, el("small", {}, "Local"), el("b", { class: "cl" }, "--:--:--"), el("em", { class: "cz" }, ""))),
-    el("button", { class: "chip panicchip", title: "Botón de pánico: enviar una alerta a todos los canales", onclick: openPanic }, "🚨 EMERGENCIAS"),
+    el("button", { class: "chip panicchip", title: "Botón de pánico: enviar una alerta a todos los canales", "aria-label": "Emergencias: enviar una alerta a todos los canales", onclick: openPanic }, "🚨 ", el("span", { class: "pcl" }, "EMERGENCIAS"), el("span", { class: "pcs" }, "SOS")),
     el("button", { class: "chip", title: "Estado del nodo conectado", onclick: () => setView(connected() ? "nodes" : "messages") }, icon("M12 3v10 M8 7l4-4 4 4 M6 13h12v3a3 3 0 01-3 3H9a3 3 0 01-3-3z"), el("i", { class: "dot " + lora[0] }), lora[1]),
     el("button", { class: "chip net " + (n.online === true ? "on" : n.online === false ? "off" : "unk"), title: netTip + " (clic para configurar)", onclick: () => setView("settings", "portal.net") },
       (() => { const s = icon(GLOBE); if (n.online === false) { const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", "M4 4l16 16"); p.setAttribute("class", "slash"); s.append(p); } return s; })(), el("i", { class: "dot " + (n.online === true ? "ok" : n.online === false ? "bad" : "wait") }), el("b", {}, netLbl)),
@@ -4668,10 +4718,13 @@ async function mqApplyToNode(s) { /* el nodo (con WiFi o Ethernet) se conecta so
 }
 function viewNet(body) {
   const q = S.mq, c = q.cfg, g = {}, F = SRV_IDX.map(() => ({}));
-  const inp = (o, k, opt = {}) => el("input", { class: "inp", value: o[k] ?? "", autocomplete: "off", ...opt });
+  /* la dirección del servidor oficial no se muestra: el campo queda vacío con su nombre y la guarda aparte */
+  const poner = (i, v) => { const of = typeof v === "string" && /meshtastic/i.test(v); i.value = of ? "" : v ?? ""; if (of) { i.dataset.oficial = v; i.placeholder = "Servidor oficial de la red"; } else delete i.dataset.oficial; return i; };
+  const leer = (i) => i.value.trim() || i.dataset.oficial || "";
+  const inp = (o, k, opt = {}) => poner(el("input", { class: "inp", autocomplete: "off", ...opt }), o[k]);
   const swi = (on) => el("label", { class: "sw" }, el("input", { type: "checkbox", checked: !!on }), el("span", {}));
   const chk = (n) => n.querySelector("input").checked;
-  const readSrv = (i) => { const f = F[i]; return { name: f.name.value.trim(), host: f.host.value.trim(), port: parseInt(f.port.value, 10) || 0, tls: chk(f.tls), url: mqNormUrl(f.url.value), user: f.user.value.trim(), pass: f.pass.value, root: f.root.value.trim(), enabled: chk(f.on) }; };
+  const readSrv = (i) => { const f = F[i]; return { name: f.name.value.trim(), host: leer(f.host), port: parseInt(f.port.value, 10) || 0, tls: chk(f.tls), url: mqNormUrl(leer(f.url)), user: f.user.value.trim(), pass: f.pass.value, root: f.root.value.trim(), enabled: chk(f.on) }; };
   const readAll = () => { c.servers = SRV_IDX.map(readSrv); c.enabled = chk(g.enabled); c.uplink = chk(g.uplink); c.upAll = chk(g.upAll); c.downlink = chk(g.downlink); c.proxy = chk(g.proxy); };
   const saveAll = () => { readAll(); saveNetCfg(); mqClose(); mqEnsure(); probeNet(); scheduleRefresh("all"); toast("Guardado", "ok"); };
   body.append(el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Internet y MQTT del portal"), el("small", { class: "muted" }, "LoRa funciona siempre. Con Internet, el portal usa los servidores MQTT que tengas encendidos. Podés dejar encendido uno solo, algunos o todos: los apagados o sin conexión no afectan a los demás. El Nº 1 es el oficial de la red."))));
@@ -4692,7 +4745,7 @@ function viewNet(body) {
     el("div", { class: "rowbtn chips" }, el("button", { class: "btn", onclick: saveAll }, "Guardar y conectar los servidores"))));
   c.servers.forEach((s, i) => {
     const f = F[i] = { name: inp(s, "name"), host: inp(s, "host", { placeholder: "servidor.ejemplo.com" }), port: inp(s, "port", { type: "number", min: 1, max: 65535 }), tls: swi(s.tls), url: inp(s, "url", { placeholder: i === 0 ? "Vacío = el portal la busca solo" : "wss://servidor:puerto/mqtt" }), user: inp(s, "user"), pass: inp(s, "pass", { type: "password" }), root: inp(s, "root", { placeholder: mqRoot() }), on: swi(s.enabled) };
-    const fill = (d) => { f.name.value = d.name; f.host.value = d.host; f.port.value = d.port; f.url.value = d.url; f.user.value = d.user || ""; f.pass.value = d.pass || ""; f.root.value = d.root || ""; f.tls.querySelector("input").checked = !!d.tls; };
+    const fill = (d) => { f.name.value = d.name; poner(f.host, d.host); f.port.value = d.port; poner(f.url, d.url); f.user.value = d.user || ""; f.pass.value = d.pass || ""; f.root.value = d.root || ""; f.tls.querySelector("input").checked = !!d.tls; };
     const hint = i === 0
       ? "Dirección, puerto y TLS son los datos TCP del servidor (8883 con TLS, 1883 sin cifrar), los mismos que usa el nodo. El navegador solo habla WebSocket: el portal busca solo una dirección web de este servidor o el puente local (ws://localhost:9001). Si no hay ninguna, tocá “Aplicar al nodo”: el nodo se conecta solo, por su WiFi o Ethernet."
       : /flespi/i.test(s.host) ? "Flespi pide un token propio: en Usuario va “FlespiToken ” seguido de tu token (la contraseña queda vacía). Sin token no conecta." : "Este servidor tiene que ofrecer WebSocket (wss://…). Usuario y contraseña son opcionales.";

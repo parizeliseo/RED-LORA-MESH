@@ -23,6 +23,7 @@ Todo lo listo para usar está en [`publicado/`](publicado/):
 | [`OPEN-SOURCE-PARIZ-app-1.11.apk`](publicado/OPEN-SOURCE-PARIZ-app-1.11.apk) | La aplicación Android (7.0 o más nuevo). |
 | [`Instructivo-portal-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-portal-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo del portal, con capturas. |
 | [`Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación. |
+| [`Instructivo-app-Windows-OPEN-SOURCE-PARIZ.pdf`](publicado/Instructivo-app-Windows-OPEN-SOURCE-PARIZ.pdf) | Instructivo completo de la aplicación para Windows: instalación y uso, paso a paso. |
 
 **En la computadora:** descargá el `.html`, abrilo con **Chrome, Edge, Brave u Opera**
 y conectá el nodo. Para conectarte **por red (WiFi o LAN)** sirve cualquier navegador,
@@ -80,7 +81,7 @@ android/           Aplicación Android
 windows/           Aplicación para Windows (Electron): ventana, bandeja, puente y red propios
 puente-mqtt/       Puente MQTT de Python, para el portal en el navegador (las apps ya lo traen)
 publicado/         Archivos listos para usar: portal, APK e instructivos
-docs/              Fuentes de los dos instructivos (texto, capturas y generador)
+docs/              Fuentes de los tres instructivos (texto, capturas y generador)
 ```
 
 ---
@@ -127,7 +128,7 @@ npm run dist     # instalador y portable en windows/dist/
 ### Instructivos
 
 ```bash
-cd docs/instructivo-portal   # o docs/instructivo-app
+cd docs/instructivo-portal   # o docs/instructivo-app, o docs/instructivo-windows
 python3 build_manual.py      # o build_app.py
 ```
 

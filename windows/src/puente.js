@@ -277,6 +277,8 @@ function crearPuente(log, alCambiar) {
 
   return {
     abrir, cerrar, estadoDetallado,
+    /* empezar la lista de problemas de cero (la usan las pruebas) */
+    limpiarErrores: () => { errores.length = 0; },
     /* resumen corto, para la bandeja y el registro */
     estado: () => { const d = estadoDetallado(); return { activo: d.activo, error: d.error, conexiones: d.conexiones.length, conectados: d.conectados, total: d.total }; },
   };

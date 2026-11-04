@@ -7,6 +7,14 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ## 1.11 — 3 de noviembre de 2026
 
+### Instructivo de la aplicación para Windows
+
+Nuevo PDF de 50 páginas y 23 capítulos, con capturas del programa real: requisitos y
+controladores USB, instalación paso a paso (aviso de SmartScreen, instalador, versión portable),
+conexión por USB, Bluetooth y red, todas las pantallas, el puente MQTT integrado, la bandeja del
+sistema y los avisos de Windows, copias de seguridad, actualización, desinstalación, dónde quedan
+los datos y solución de problemas. Está en `publicado/` y su origen en `docs/instructivo-windows/`.
+
 ### La app de Android se ajusta a la pantalla del celular
 
 En un teléfono (412 px de ancho, como la mayoría) varias pantallas no entraban: la barra de arriba

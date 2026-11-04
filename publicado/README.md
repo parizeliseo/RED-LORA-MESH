@@ -6,6 +6,7 @@
 | `OPEN-SOURCE-PARIZ-app-1.11.apk` | Aplicación Android 7.0 o más nuevo. |
 | `Instructivo-portal-OPEN-SOURCE-PARIZ.pdf` | Instructivo del portal. |
 | `Instructivo-app-Android-OPEN-SOURCE-PARIZ.pdf` | Instructivo de la aplicación. |
+| `Instructivo-app-Windows-OPEN-SOURCE-PARIZ.pdf` | Instructivo de la aplicación para Windows: descarga, instalación, conexión y uso. |
 
 Para instalar la APK: copiarla al celular, abrirla desde *Archivos* y permitir la instalación
 desde esa fuente. Si Play Protect avisa «app no verificada», es porque no está publicada en la

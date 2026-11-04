@@ -1,0 +1,56 @@
+@page { size: A4; margin: 16mm 0 }
+@page :first { margin: 0 }
+*{box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font:10.4pt/1.5 "Inter","Segoe UI",Arial,sans-serif;color:#1f2937}
+.cover{height:297mm;margin:0;padding:26mm 22mm 22mm;background:linear-gradient(155deg,#0b1f55 0%,#1e40af 60%,#2563eb 100%);color:#fff;display:flex;flex-direction:column;justify-content:space-between;page-break-after:always;break-after:page}
+.cv-top{display:flex;gap:12px;align-items:center;font-size:13pt}.cv-top small{opacity:.8;font-size:9.5pt}
+.logo{width:46px;height:46px;border-radius:12px;background:#fff;color:#1e40af;font-size:22pt;display:flex;align-items:center;justify-content:center}
+.kicker{letter-spacing:.2em;font-size:10pt;opacity:.85;margin-bottom:12px}
+.cover h1{font-size:34pt;line-height:1.1;margin:0 0 18px;font-weight:800}
+.cv-mid p{max-width:120mm;font-size:12pt;opacity:.92;line-height:1.55}
+.cv-bot{display:flex;gap:28px;font-size:9.5pt;border-top:1px solid rgba(255,255,255,.35);padding-top:14px}.cv-bot b{opacity:.75;font-weight:600}
+.tocp{padding:6mm 22mm 0;page-break-after:always;break-after:page}
+.toch{font-size:22pt;margin:0 0 14px;color:#0b1f55}
+.toc{list-style:none;padding:0;margin:0}
+.toc li a{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid #e5e7eb;color:#111827;text-decoration:none;font-size:11pt}
+.toc .n{width:26px;height:26px;border-radius:50%;background:#1e40af;color:#fff;font-size:9.5pt;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center}
+.toc .t{font-weight:600}.toc .dots{flex:1}.toc .pg{color:#1e40af;font-weight:700}
+.howto{margin-top:18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;font-size:9.5pt}.howto p{margin:4px 0 0}
+.tag{display:inline-block;border-radius:5px;padding:0 7px;font-size:8.5pt;font-weight:700;border:1px solid}
+.chap{padding:0 22mm;break-before:page}
+.chead{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1e40af;padding-bottom:8px;margin:2mm 0 14px}
+.cn{width:38px;height:38px;border-radius:10px;background:#1e40af;color:#fff;font-size:17pt;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+h2{font-size:20pt;margin:0;color:#0b1f55}
+h3{font-size:12.5pt;color:#1e40af;margin:18px 0 6px;break-after:avoid}
+p{margin:6px 0 8px}
+ul{margin:6px 0 10px;padding-left:20px}li{margin:3px 0}
+.steps{list-style:none;counter-reset:s;padding:0;margin:8px 0 12px}
+.steps li{counter-increment:s;display:flex;gap:12px;align-items:flex-start;margin:7px 0;break-inside:avoid}
+.steps li:before{content:counter(s);flex:none;width:24px;height:24px;border-radius:50%;background:#1e40af;color:#fff;font-weight:700;font-size:10pt;display:flex;align-items:center;justify-content:center;margin-top:1px}
+figure{margin:12px 0 6px;break-inside:avoid}
+figure img{width:100%;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 2px 8px rgba(15,23,42,.12)}
+figcaption{font-size:8.8pt;color:#475569;margin-top:5px;text-align:center}
+.leg{list-style:none;counter-reset:l;padding:0;margin:6px 0 12px;break-inside:avoid}
+.leg li{counter-increment:l;display:flex;gap:9px;align-items:flex-start;font-size:9.6pt;margin:3px 0}
+.leg li:before{content:counter(l);flex:none;width:20px;height:20px;border-radius:50%;background:#d4271c;color:#fff;font-weight:700;font-size:9pt;display:flex;align-items:center;justify-content:center;margin-top:1px}
+table{width:100%;border-collapse:collapse;margin:8px 0 12px;font-size:9.4pt;break-inside:auto}
+th{background:#0b1f55;color:#fff;text-align:left;padding:6px 9px;font-weight:600}
+td{padding:6px 9px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+tr{break-inside:avoid}tbody tr:nth-child(even) td{background:#f8fafc}
+td:first-child{font-weight:600;width:32%}
+.box{display:flex;flex-direction:column;gap:3px;border-left:4px solid;border-radius:6px;padding:9px 13px;margin:10px 0;break-inside:avoid;font-size:9.8pt}
+.box .bt{font-weight:800;font-size:8.8pt;letter-spacing:.06em;text-transform:uppercase}
+.box.tip,.tag.tip{background:#ecfdf5;border-color:#10b981;color:#065f46}
+.box.note,.tag.note{background:#eff6ff;border-color:#3b82f6;color:#1e3a8a}
+.box.warn,.tag.warn{background:#fef2f2;border-color:#dc2626;color:#7f1d1d}
+
+.code{background:#0c0c0c;color:#e5e7eb;font:10pt Consolas,'DejaVu Sans Mono',monospace;padding:9px 14px;border-radius:7px;margin:6px 0 10px;break-inside:avoid}
+td:nth-child(2){}
+
+table.w4 td:first-child{width:7%;text-align:center}
+table.w4 td:nth-child(2){font-weight:600;width:24%}
+table.w4 td:nth-child(3){width:26%}
+/* Capturas de celular: son muy altas, se limitan para que entren junto al texto */
+figure img{width:auto;max-width:100%;max-height:135mm;display:block;margin:0 auto}
+figure{text-align:center}

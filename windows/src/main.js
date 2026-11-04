@@ -398,4 +398,4 @@ app.whenReady().then(async () => {
 
 module.exports = { _paraPruebas: { puente, pendientes } };
 /* para las pruebas automáticas, solo fuera del paquete instalado */
-if (!app.isPackaged) global.__pruebas = { bandeja: () => ({ nivelBandeja, nivelBarra, tooltip: ultimoTooltip, menu: ultimoMenu }) };
+if (!app.isPackaged) global.__pruebas = { bandeja: () => ({ nivelBandeja, nivelBarra, tooltip: ultimoTooltip, menu: ultimoMenu }), limpiarPuente: () => puente.limpiarErrores() };

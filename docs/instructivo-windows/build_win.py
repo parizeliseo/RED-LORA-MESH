@@ -1,0 +1,95 @@
+# -*- coding: utf-8 -*-
+# Arma el instructivo de la aplicación para Windows (PDF). Mismo estilo que los otros dos instructivos.
+# Requiere playwright (Chromium) y pypdf. Uso: python3 build_win.py
+import base64, io, os, re, asyncio
+from PIL import Image, ImageDraw, ImageFont
+from playwright.async_api import async_playwright
+from content_win import CH, VERSION, FECHA
+FIG_N = [0]
+FUENTE = next((f for f in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "C:/Windows/Fonts/arialbd.ttf") if os.path.exists(f)), None)
+
+def marcar(im, marcas):
+    """Números rojos sobre la captura, en las coordenadas dadas (píxeles de la captura)."""
+    d = ImageDraw.Draw(im); r = 14
+    f = ImageFont.truetype(FUENTE, 15) if FUENTE else ImageFont.load_default()
+    for i, (x, y) in enumerate(marcas, 1):
+        d.ellipse((x - r - 2, y - r - 2, x + r + 2, y + r + 2), fill="#ffffff")
+        d.ellipse((x - r, y - r, x + r, y + r), fill="#d4271c")
+        t = str(i); w = d.textlength(t, font=f)
+        d.text((x - w / 2, y - 9), t, font=f, fill="#ffffff")
+    return im
+
+def img64(name, marcas=None):
+    ruta = next(f"img/{name}{e}" for e in (".png", ".jpg") if os.path.exists(f"img/{name}{e}"))
+    im = Image.open(ruta).convert("RGB")
+    if marcas: im = marcar(im, marcas)
+    b = io.BytesIO(); im.save(b, "JPEG", quality=86, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(b.getvalue()).decode()
+
+def render_block(bl):
+    k = bl[0]
+    if k == "p": return f"<p>{bl[1]}</p>"
+    if k == "h3": return f"<h3>{bl[1]}</h3>"
+    if k == "ul": return "<ul>" + "".join(f"<li>{x}</li>" for x in bl[1]) + "</ul>"
+    if k == "steps": return "<ol class='steps'>" + "".join(f"<li><span>{x}</span></li>" for x in bl[1]) + "</ol>"
+    if k in ("tip", "warn", "note"):
+        lab = {"tip": "Consejo", "warn": "Importante", "note": "Nota"}[k]
+        return f"<div class='box {k}'><div class='bt'>{lab}</div><div>{bl[1]}</div></div>"
+    if k == "table":
+        head = "".join(f"<th>{h}</th>" for h in bl[1]); rows = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in bl[2])
+        return f"<table class='{'w4' if len(bl[1])>=4 else ''}'><thead><tr>{head}</tr></thead><tbody>{rows}</tbody></table>"
+    if k == "code": return f"<pre class='code'>{bl[1]}</pre>"
+    if k == "fig":
+        FIG_N[0] += 1
+        marcas = bl[4] if len(bl) > 4 else None
+        leg = ("<ol class='leg'>" + "".join(f"<li><span>{x}</span></li>" for x in bl[3]) + "</ol>") if bl[3] else ""
+        if marcas: assert len(marcas) == len(bl[3]), bl[1]
+        return f"<figure><img src='{img64(bl[1], marcas)}'><figcaption><b>Figura {FIG_N[0]}.</b> {bl[2]}</figcaption></figure>{leg}"
+    raise ValueError(k)
+
+def build(pages=None):
+    FIG_N[0] = 0
+    toc = "".join(f"<li><a href='#c{i+1}'><span class='n'>{i+1}</span><span class='t'>{t}</span><span class='dots'></span><span class='pg'>{(pages or {}).get(i+1,'')}</span></a></li>" for i, (t, _) in enumerate(CH))
+    body = ""
+    for i, (t, blocks) in enumerate(CH):
+        body += f"<section class='chap' id='c{i+1}'><div class='chead'><span class='cn'>{i+1}</span><h2>{t}</h2></div>" + "".join(render_block(b) for b in blocks) + "</section>"
+    css = open("manual.css", encoding="utf-8").read() + "figure img{max-height:118mm}"
+    return f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Instructivo de la aplicación para Windows - OPEN SOURCE PARIZ</title><style>{css}</style></head><body>
+<section class="cover"><div class="cv-top"><div class="logo">▲</div><div><b>OPEN SOURCE PARIZ</b><br><small>Sistema LoRa Mesh</small></div></div>
+<div class="cv-mid"><div class="kicker">INSTRUCTIVO DE LA APLICACIÓN DE ESCRITORIO</div><h1>Aplicación para<br>Windows</h1><p>Guía completa, paso a paso y con capturas del programa real: descarga, instalación, conexión del nodo por cable USB, Bluetooth o red, todas las pantallas, el puente MQTT integrado, la bandeja del sistema, copias de seguridad, actualización y solución de problemas.</p></div>
+<div class="cv-bot"><div><b>Aplicación</b><br>versión {VERSION}</div><div><b>Fecha</b><br>{FECHA}</div><div><b>Requisitos</b><br>Windows 10 u 11 (64 bits)</div></div></section>
+<section class="tocp"><h2 class="toch">Contenido</h2><ol class="toc">{toc}</ol>
+<div class="howto"><b>Cómo leer este instructivo</b><p>Los números rojos de las capturas se explican en la lista numerada que está debajo de cada figura. Los recuadros <span class="tag tip">Consejo</span> <span class="tag note">Nota</span> y <span class="tag warn">Importante</span> destacan información que conviene no pasar por alto. Lo que se escribe entre comillas angulares, como <b>«Más información»</b>, es el texto exacto de un botón o de un mensaje de Windows.</p></div></section>
+{body}</body></html>"""
+
+FOOT = """<div style="width:100%;font:8.5px Arial;color:#6b7280;padding:0 18mm;display:flex;justify-content:space-between"><span>OPEN SOURCE PARIZ · Instructivo de la aplicación para Windows</span><span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span></div>"""
+
+async def render(html, out, pie=True):
+    async with async_playwright() as p:
+        b = await p.chromium.launch(); pg = await b.new_page()
+        await pg.set_content(html, wait_until="load"); await pg.wait_for_timeout(500)
+        await pg.pdf(path=out, format="A4", print_background=True, display_header_footer=pie, header_template="<div></div>", footer_template=FOOT if pie else "<div></div>", margin={"top":"0","bottom":"0","left":"0","right":"0"}, prefer_css_page_size=True)
+        await b.close()
+
+def pages_of(pdf):
+    from pypdf import PdfReader
+    r = PdfReader(pdf); res = {}; last = 1
+    for i, (t, _) in enumerate(CH):
+        for n, pg in enumerate(r.pages):
+            if n <= last: continue
+            tx = re.sub(r"\s+", " ", pg.extract_text() or "")
+            if re.search(rf"(^| ){i+1} ?{re.escape(t.split(chr(40))[0].strip())}", tx):
+                res[i+1] = n + 1; last = n; break
+    return res
+
+if __name__ == "__main__":
+    out = "manual-win.pdf"
+    asyncio.run(render(build(), out)); pg = pages_of(out); print(pg)
+    asyncio.run(render(build(pg), out)); pg2 = pages_of(out); print("índice estable:", pg2 == pg, len(pg), "de", len(CH))
+    full = build(pg); cover = re.sub(r'<section class="tocp">.*', '</body></html>', full, flags=re.S)
+    asyncio.run(render(cover, "cover.pdf", pie=False))
+    from pypdf import PdfReader, PdfWriter
+    r = PdfReader(out); c = PdfReader("cover.pdf"); w = PdfWriter(); w.add_page(c.pages[0])
+    for i in range(1, len(r.pages)): w.add_page(r.pages[i])
+    w.add_metadata({"/Title": "Instructivo de la aplicacion para Windows - OPEN SOURCE PARIZ", "/Author": "OPEN SOURCE PARIZ"})
+    w.write("instructivo-windows.pdf"); print("hojas:", len(w.pages))

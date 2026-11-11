@@ -30,7 +30,7 @@ Solo atiende al portal: las páginas de Internet no pueden usar el puente ni ver
 """
 import asyncio, base64, errno, hashlib, json, socket, ssl, struct, sys, time
 
-VERSION = "1.10"
+VERSION = "1.11"
 
 GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -58,13 +58,15 @@ ahora_ms = lambda: int(time.time() * 1000)
 
 
 def anotar_error(host, port, texto):
-    print("  ✗", texto)
+    # primero se anota (es lo que lee el portal) y después se muestra en la ventana
     # el portal reintenta solo: el mismo problema seguido se cuenta, no se repite
     u = ERRORES[0] if ERRORES else None
     if u and u["texto"] == texto and u["servidor"] == host and u["puerto"] == port:
-        u["t"] = ahora_ms(); u["veces"] = u.get("veces", 1) + 1; return
-    ERRORES.insert(0, {"t": ahora_ms(), "servidor": host, "puerto": port, "texto": texto, "veces": 1})
-    del ERRORES[12:]
+        u["t"] = ahora_ms(); u["veces"] = u.get("veces", 1) + 1
+    else:
+        ERRORES.insert(0, {"t": ahora_ms(), "servidor": host, "puerto": port, "texto": texto, "veces": 1})
+        del ERRORES[12:]
+    print("  ✗", texto)
 
 
 def origen_ok(origen):
@@ -429,7 +431,18 @@ async def main():
         await srv.serve_forever()
 
 
+def salida_segura():
+    """Si la salida va a un archivo o a otro programa, Windows no la escribe en UTF-8 y una letra que
+    no puede escribir (✓, ✗) cortaba el pedido en curso. Así la reemplaza y sigue."""
+    for f in (sys.stdout, sys.stderr):
+        try:
+            f.reconfigure(errors="replace")
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
+    salida_segura()
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

@@ -10,15 +10,18 @@ on:
     paths: ["portal/**"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   compilar:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Instalar dependencias
         working-directory: portal
@@ -41,7 +44,7 @@ jobs:
           echo "El portal compiló bien."
 
       - name: Guardar el portal compilado
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: portal-lora-mesh
           path: portal/dist/portal-meshtastic.html

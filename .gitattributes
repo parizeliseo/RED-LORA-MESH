@@ -1,0 +1,4 @@
+# Los archivos de Windows conservan sus finales de línea (CRLF) tal como están guardados:
+# si se convierten, los .bat pueden fallar al buscar sus etiquetas.
+*.bat -text
+*.vbs -text

@@ -1,6 +1,6 @@
 /* Prueba el puente MQTT integrado como lo usa el portal: WebSocket con protocolo "mqtt" hacia un
    servidor MQTT por TCP. Además prueba que rechace lo que no debe pasar. */
-const WebSocket = require("/root/winapp/node_modules/ws");
+const WebSocket = require("ws");
 const { crearPuente } = require("../src/puente");
 
 /* paquetes MQTT 3.1.1 mínimos */

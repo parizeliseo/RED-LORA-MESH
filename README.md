@@ -1,5 +1,9 @@
 # RED LORA MESH — OPEN SOURCE PARIZ
 
+[![Compilar el portal](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/compilar-portal.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/compilar-portal.yml)
+[![Aplicación de Windows](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/windows.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/windows.yml)
+[![Puente MQTT (Python)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/python.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/python.yml)
+
 Sistema de comunicaciones por radio **LoRa Mesh** para uso en terreno, sin depender de internet
 ni de ningún servidor propio. Consta de tres piezas que hacen lo mismo:
 
@@ -147,6 +151,10 @@ Conviene ser claro sobre esto:
   selector USB, y lo instala y desinstala en silencio. Los dos puentes MQTT (el de la aplicación
   y el de Python) se prueban además contra un servidor Mosquitto real: conexión aceptada, clave
   equivocada, certificado inválido, puerto cerrado y servidor que se cae y vuelve.
+- El **puente MQTT de Python** se prueba en cada cambio en computadoras de GitHub con Windows y
+  con Linux, con Python 3.8 (el más viejo que soporta) y 3.14: que solo atienda al portal, que
+  solo reenvíe a los servidores permitidos, que no toque los mensajes y que `/estado` diga la
+  verdad. La prueba (`puente-mqtt/pruebas/t_puente_solo.py`) no necesita Internet ni instalar nada.
 - **Lo que todavía no se probó en hardware real** es cualquiera de las dos aplicaciones contra un
   nodo físico: el teléfono por Bluetooth o USB-OTG, y en Windows los puertos COM reales y el
   emparejamiento Bluetooth con PIN. Si encontrás algo que no funciona, es el lugar más probable.

@@ -24,7 +24,7 @@ saludo MQTT (si aceptó el usuario y la clave), cuenta los mensajes que van y vi
 muestra en el botón del puente (verde, ámbar o rojo) y en el panel **Puente MQTT**.
 
 ```json
-{ "puente": "Python", "version": "1.10", "activo": true, "conectados": 1,
+{ "puente": "Python", "version": "1.11", "activo": true, "conectados": 1,
   "conexiones": [{ "servidor": "…", "puerto": 1883, "tls": false, "mqtt": "conectado",
                    "recibidos": 23, "enviados": 0, "bytesRx": 851, "bytesTx": 86, "desde": 0, "ultimo": 0 }],
   "errores": [{ "t": 0, "servidor": "…", "puerto": 8884, "veces": 3,
@@ -40,3 +40,16 @@ Es el mismo formato que usa el puente integrado en la aplicación de Windows.
 - **Solo atiende al portal:** rechaza las conexiones y los pedidos de estado que vengan de una página
   de Internet (se mira el encabezado `Origin`). El portal abierto como archivo sí puede usarlo.
 
+## Probarlo
+
+```
+python pruebas/t_puente_solo.py
+```
+
+Levanta un servidor MQTT de mentira en la misma computadora, abre el puente en un puerto libre y le
+habla como el portal. No necesita Internet, navegador ni instalar nada, y anda en Windows, Linux y
+macOS con Python 3.8 o más nuevo. Termina con `TODO BIEN` si las 29 comprobaciones dieron bien.
+GitHub la corre sola en cada cambio (pestaña **Actions** → *Puente MQTT (Python)*).
+
+`pruebas/t_puente_portal.py` es la prueba completa con el portal en un navegador y un servidor
+Mosquitto real; necesita Playwright y Mosquitto instalados.

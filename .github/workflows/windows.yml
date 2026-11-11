@@ -13,14 +13,17 @@ on:
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   armar-y-probar:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
@@ -77,7 +80,7 @@ jobs:
           "Desinstalado sin dejar el programa"
 
       - name: Guardar instalador y portable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: OPEN-SOURCE-PARIZ-Windows
           path: |
@@ -88,7 +91,7 @@ jobs:
 
       - name: Guardar la captura de la prueba
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: captura-de-la-prueba-en-windows
           path: windows/pruebas/captura-*.png

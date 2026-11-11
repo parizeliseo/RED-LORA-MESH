@@ -5,6 +5,41 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## Mantenimiento — 11 de noviembre de 2026
+
+No cambia el portal ni las aplicaciones (siguen en 1.11); cambia el puente de Python y las
+comprobaciones automáticas.
+
+### Las comprobaciones automáticas de GitHub, en verde y al día
+
+- **Se fue el flujo «Python Package using Conda»**, que fallaba siempre. Era una plantilla genérica
+  de GitHub para proyectos armados con Conda: buscaba un archivo `environment.yml` que este
+  proyecto no tiene ni necesita. Estaba borrado desde el 24 de octubre; los avisos de falla de
+  hoy salieron al volver a ejecutar a mano dos corridas viejas, que siempre usan el archivo de
+  aquel día.
+- **En su lugar hay una comprobación que sí sirve: «Puente MQTT (Python)».** Prueba el puente en
+  Windows y en Linux, con Python 3.8 y 3.14, y revisa que todo el código Python compile y no
+  tenga errores de programación.
+- Los tres flujos usan las acciones actuales (ya no avisan «Node.js 20 is deprecated»), el portal
+  se compila con Node 22 (Node 20 dejó de tener soporte) y cada flujo tiene solo permiso de
+  lectura sobre el repositorio.
+
+### Puente de Python 1.11
+
+- **Arreglo:** cuando la salida del puente iba a un archivo o a otro programa en Windows (por
+  ejemplo `python puente-mqtt.py > registro.txt`, o una tarea programada), una letra que Windows
+  no podía escribir cortaba el pedido en curso: el portal no recibía el motivo de la falla y el
+  problema no quedaba anotado en `/estado`. Abierto desde su ventana o con el botón del portal
+  funcionaba bien. Ahora anota primero y escribe después, y nunca se corta por una letra.
+- **Prueba nueva** `puente-mqtt/pruebas/t_puente_solo.py`: 29 comprobaciones con un servidor MQTT
+  de mentira, sin Internet ni programas extra. Fue la que encontró el problema de arriba.
+
+### Otros
+
+- `.gitattributes`: los archivos `.bat` y `.vbs` conservan sus finales de línea de Windows.
+
+---
+
 ## 1.11 — 3 de noviembre de 2026
 
 ### Instructivo de la aplicación para Windows

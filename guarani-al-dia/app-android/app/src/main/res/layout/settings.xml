@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Ajustes" android:textSize="26sp" android:fontFamily="serif" android:textColor="@color/fg"/>
+        <TextView android:id="@+id/setStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="13sp" android:alpha="0.7" android:textColor="@color/fg"/>
+
+        <TextView style="@style/SetLabel" android:text="Dirección de SIU Guaraní (autogestión)"/>
+        <EditText android:id="@+id/setUrl" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="textUri" android:hint="https://siu.iugna.edu.ar/autogestion/"/>
+
+        <TextView style="@style/SetLabel" android:text="Usuario (DNI o e-mail)"/>
+        <EditText android:id="@+id/setUser" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="text" android:autofillHints="username"/>
+
+        <TextView style="@style/SetLabel" android:text="Clave"/>
+        <EditText android:id="@+id/setPass" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="textPassword" android:autofillHints="password"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:alpha="0.65"
+            android:textColor="@color/fg"
+            android:text="Se guarda cifrada en el teléfono (Android Keystore) y solo se usa para volver a entrar a Guaraní cuando la sesión vence. Si la dejás vacía, la app usa la sesión que abras en la pestaña Guaraní."/>
+
+        <TextView style="@style/SetLabel" android:text="Revisar Guaraní cada"/>
+        <Spinner android:id="@+id/setInterval" android:layout_width="match_parent" android:layout_height="48dp"/>
+
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/setAll"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp"
+            android:text="Avisarme de cualquier cambio (no solo notas)" android:checked="true"/>
+        <com.google.android.material.materialswitch.MaterialSwitch android:id="@+id/setWifi"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Revisar solo con Wi-Fi" android:checked="false"/>
+
+        <Button android:id="@+id/btnSave" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="16dp" android:text="Guardar y activar"/>
+        <Button android:id="@+id/btnCheck" style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Revisar ahora"/>
+        <Button android:id="@+id/btnTest" style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Probar notificación"/>
+        <Button android:id="@+id/btnBattery" style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Permitir que funcione en segundo plano"/>
+
+        <TextView style="@style/SetLabel" android:text="Páginas de Guaraní que se vigilan (una por línea)"/>
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:alpha="0.65"
+            android:textColor="@color/fg"
+            android:text="Se completa sola con el menú de Guaraní en la primera revisión. Podés agregar o borrar direcciones."/>
+        <EditText android:id="@+id/setPages" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="textMultiLine|textUri" android:minLines="4" android:gravity="top" android:textSize="13sp"/>
+        <Button android:id="@+id/btnPages" style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Guardar páginas"/>
+        <Button android:id="@+id/btnReset" style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Volver a tomar la foto inicial (sin avisar)"/>
+    </LinearLayout>
+</ScrollView>

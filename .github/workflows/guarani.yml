@@ -1,0 +1,40 @@
+# Comprueba que la app Guaraní al día compile y que pasen las pruebas del lector de notas.
+# No publica nada ni firma con la clave real: solo avisa si un cambio rompió algo.
+name: Guaraní al día (Android)
+
+on:
+  push:
+    branches: [main]
+    paths: ["guarani-al-dia/app-android/**", ".github/workflows/guarani.yml"]
+  pull_request:
+    paths: ["guarani-al-dia/app-android/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: guarani-al-dia/app-android
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Pruebas y compilación
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon testReleaseUnitTest assembleRelease
+
+      - name: Guardar el APK (sin firmar)
+        uses: actions/upload-artifact@v7
+        with:
+          name: guarani-al-dia
+          path: guarani-al-dia/app-android/app/build/outputs/apk/release/*.apk
+          retention-days: 14

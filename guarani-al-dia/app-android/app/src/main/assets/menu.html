@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es-AR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menú de Guaraní</title>
+<style>
+:root{--bg:#F7F6F2;--fg:#1E1E1C;--muted:#6B6A64;--panel:#FFFFFF;--line:#E3E1D9;--brand:#1F5C4A;--soft:#E7F0EC}
+@media (prefers-color-scheme: dark){:root{--bg:#1A1A18;--fg:#ECEBE6;--muted:#A3A29B;--panel:#242422;--line:#3A3936;--brand:#6CC2A0;--soft:#233A32}}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,"Roboto",sans-serif}
+body{padding:16px 16px 28px}
+h1{font-family:"Noto Serif",Georgia,serif;font-weight:400;font-size:1.8rem;margin:0}
+.lede{color:var(--muted);font-size:.9rem;margin:6px 0 18px;line-height:1.45}
+h2{font-size:1rem;margin:22px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+button.item{font:inherit;text-align:left;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;min-height:74px;display:flex;flex-direction:column;gap:4px}
+button.item:active{background:var(--soft)}
+button.item b{font-size:.95rem;font-weight:600}
+button.item span{font-size:.78rem;color:var(--muted);line-height:1.3}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:12px;padding:14px;font-size:.88rem;color:var(--muted);line-height:1.45}
+.empty button{margin-top:10px;font:inherit;font-size:.85rem;border-radius:999px;padding:7px 14px;border:0;background:var(--brand);color:#fff}
+</style></head><body>
+<h1>Todo Guaraní</h1>
+<p class="lede">Cada botón abre esa sección de SIU Guaraní dentro de la app, con tu sesión iniciada.</p>
+
+<h2>Mi cuenta de alumno</h2>
+<div id="alumno" class="grid"></div>
+
+<h2>Consultas públicas</h2>
+<div id="publico" class="grid"></div>
+
+<h2>Acceso y ayuda</h2>
+<div id="cuenta" class="grid"></div>
+
+<script>
+var BASE='https://siu.iugna.edu.ar/autogestion/';
+try{ BASE=Android.base(); }catch(e){}
+var DESC={
+ 'historia':'Notas, actas y promedio','plan':'Materias de tu propuesta','inscripci':'Anotarte o darte de baja',
+ 'examen':'Mesas y turnos','cursada':'Comisiones y horarios','mensaje':'Avisos de la institución',
+ 'encuesta':'Encuestas pendientes','dato':'Actualizar tus datos','certificad':'Pedir o descargar certificados',
+ 'reporte':'Reportes y constancias','calendario':'Fechas del ciclo lectivo','perfil':'Tu perfil'
+};
+function desc(t){ var n=t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); for(var k in DESC){ if(n.indexOf(k)>=0) return DESC[k]; } return ''; }
+function item(t,u,d){ var b=document.createElement('button'); b.className='item';
+  var x=document.createElement('b'); x.textContent=t; b.append(x);
+  if(d){ var s=document.createElement('span'); s.textContent=d; b.append(s); }
+  b.onclick=function(){ try{ Android.open(u); }catch(e){ location.href=u; } }; return b; }
+var PUBLICO=[['Fechas de Examen','fecha_examen','Mesas por propuesta, plan y fecha'],
+ ['Horarios de Cursadas','horarios_cursadas','Días, turnos y comisiones'],
+ ['Validador de Certificados','validador_certificados','DNI + código de validación']];
+var CUENTA=[['Ingresar','acceso','Usuario y contraseña'],
+ ['Olvidé mi contraseña','acceso/recuperar','Recuperarla o crear usuario'],
+ ['Crear usuario para cursos','alta_usuario_cursos','Si no tenés usuario'],
+ ['Ayuda y contacto','ayuda_menu','Formulario de consulta']];
+var SKIP=/(acceso|fecha_examen|horarios_cursadas|validador_certificados|ayuda_menu|alta_usuario|recuperar|logout|salir)/i;
+
+function render(){
+  var a=document.getElementById('alumno'); a.replaceChildren();
+  var menu=[]; try{ menu=JSON.parse(Android.get('menu')); }catch(e){}
+  menu=menu.filter(function(m){ return m.titulo && m.url && !SKIP.test(m.url); });
+  if(!menu.length){
+    var d=document.createElement('div'); d.className='empty'; d.style.gridColumn='1/-1';
+    d.innerHTML='Inscripción a materias y exámenes, plan de estudios, historia académica, datos personales y alertas aparecen acá apenas la app entra a Guaraní con tu usuario por primera vez.';
+    var b=document.createElement('button'); b.textContent='Ingresar a Guaraní'; b.onclick=function(){ Android.open(BASE+'acceso'); };
+    d.append(document.createElement('br'), b); a.append(d);
+  } else menu.forEach(function(m){ a.append(item(m.titulo, m.url, desc(m.titulo))); });
+  var p=document.getElementById('publico'); p.replaceChildren(); PUBLICO.forEach(function(x){ p.append(item(x[0],BASE+x[1],x[2])); });
+  var c=document.getElementById('cuenta'); c.replaceChildren(); CUENTA.forEach(function(x){ c.append(item(x[0],BASE+x[1],x[2])); });
+}
+window.dash={refresh:render};
+render();
+</script>
+</body></html>

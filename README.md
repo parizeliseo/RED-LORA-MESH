@@ -3,6 +3,7 @@
 [![Compilar el portal](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/compilar-portal.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/compilar-portal.yml)
 [![Aplicación de Windows](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/windows.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/windows.yml)
 [![Puente MQTT (Python)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/python.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/python.yml)
+[![Guaraní al día (Android)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/guarani.yml/badge.svg)](https://github.com/parizeliseo/RED-LORA-MESH/actions/workflows/guarani.yml)
 
 Sistema de comunicaciones por radio **LoRa Mesh** para uso en terreno, sin depender de internet
 ni de ningún servidor propio. Consta de tres piezas que hacen lo mismo:
@@ -86,7 +87,16 @@ windows/           Aplicación para Windows (Electron): ventana, bandeja, puente
 puente-mqtt/       Puente MQTT de Python, para el portal en el navegador (las apps ya lo traen)
 publicado/         Archivos listos para usar: portal, APK e instructivos
 docs/              Fuentes de los tres instructivos (texto, capturas y generador)
+guarani-al-dia/    Proyecto aparte: app Android para SIU Guaraní del IUGNA (ver abajo)
 ```
+
+### Otro proyecto en este repositorio: Guaraní al día
+
+[`guarani-al-dia/`](guarani-al-dia/) no tiene relación con la red LoRa: es una app Android para el
+**SIU Guaraní del IUGNA**. Trae Guaraní completo adentro y lo revisa sola en segundo plano, y te
+avisa cuando cargan una nota, se abre una inscripción o cambia algo. El APK está en
+[`guarani-al-dia/publicado/`](guarani-al-dia/publicado/) y todo lo demás, en su
+[README](guarani-al-dia/README.md).
 
 ---
 

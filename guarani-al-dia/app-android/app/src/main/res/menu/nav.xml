@@ -1,0 +1,6 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nav_dash" android:icon="@drawable/ic_dash" android:title="Tablero"/>
+    <item android:id="@+id/nav_menu" android:icon="@drawable/ic_menu" android:title="Menú"/>
+    <item android:id="@+id/nav_web" android:icon="@drawable/ic_web" android:title="Guaraní"/>
+    <item android:id="@+id/nav_set" android:icon="@drawable/ic_tune" android:title="Ajustes"/>
+</menu>

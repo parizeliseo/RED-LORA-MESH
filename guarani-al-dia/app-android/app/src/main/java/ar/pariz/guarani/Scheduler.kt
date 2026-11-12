@@ -26,11 +26,13 @@ object Scheduler {
         )
     }
 
-    fun checkNow(c: Context) {
+    /** Revisa ya una cuenta ([pid]) o todas (null). */
+    fun checkNow(c: Context, pid: String? = null) {
         val req = OneTimeWorkRequestBuilder<CheckWorker>()
+            .setInputData(workDataOf("pid" to pid))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .addTag(CheckWorker.TAG)
             .build()
-        WorkManager.getInstance(c).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, req)
+        WorkManager.getInstance(c).enqueueUniqueWork(NOW + (pid ?: ""), ExistingWorkPolicy.KEEP, req)
     }
 }

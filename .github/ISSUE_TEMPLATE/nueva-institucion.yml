@@ -1,0 +1,37 @@
+name: Agregar una institución a Guaraní al día
+description: Pedí que tu universidad, facultad o instituto aparezca en la lista de la app.
+title: "Guaraní al día: agregar "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias. **No pongas tu usuario ni tu contraseña**: solo hace falta la dirección pública.
+  - type: input
+    id: nombre
+    attributes:
+      label: Institución o facultad
+      placeholder: "Ej.: UNCo — Facultad de Informática"
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Dirección de SIU Guaraní (autogestión)
+      description: La que ves en el navegador en la pantalla de ingreso de alumnos.
+      placeholder: "https://…/autogestion/"
+    validations:
+      required: true
+  - type: dropdown
+    id: ingreso
+    attributes:
+      label: ¿Cómo se entra?
+      options:
+        - Usuario y contraseña en la misma página de Guaraní
+        - Botón «Acceder / Ingresar» que lleva al usuario institucional
+        - No sé
+  - type: checkboxes
+    id: probado
+    attributes:
+      label: Prueba
+      options:
+        - label: Agregué la dirección a mano en la app y funcionó

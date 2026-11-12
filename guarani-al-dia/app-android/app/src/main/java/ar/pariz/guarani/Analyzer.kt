@@ -6,7 +6,8 @@ import org.json.JSONObject
 import java.text.Normalizer
 
 /** Compara cada revisión con la anterior, actualiza el tablero y dispara las notificaciones. */
-class Analyzer(private val c: Context) {
+class Analyzer(private val c: Context, private val prof: Profile) {
+    private val pid = prof.id
 
     data class Change(val page: String, val added: List<String>, val removed: List<String>)
 
@@ -49,6 +50,26 @@ class Analyzer(private val c: Context) {
             "ausente" -> "Ausente"; "libre" -> "Libre"; "regular" -> "Regular, falta final"; else -> "En curso"
         }
 
+        /** Línea tipo "Base de Datos (GSTI-107)": así lista Guaraní cada actividad en la historia académica. */
+        private val ACTIVITY = Regex("^(.{3,120}?)\\s*\\(([A-Za-z0-9][A-Za-z0-9.\\-_/]{0,15})\\)\\s*$")
+
+        /** Materias que aparecen en las páginas de historia académica: (nombre, código). */
+        fun discoverActivities(pages: List<Pair<String, List<String>>>): List<Pair<String, String>> {
+            val out = linkedMapOf<String, String>()
+            for ((url, ls) in pages) {
+                val isHist = norm(url).contains("historia") || ls.take(5).any { norm(it).contains("historia academica") }
+                if (!isHist) continue
+                for (l in ls) {
+                    val m = ACTIVITY.find(l) ?: continue
+                    val name = m.groupValues[1].trim().trimEnd('-', ':', '·').trim()
+                    if (name.length < 3 || Regex("^\\d").containsMatchIn(name)) continue
+                    if (GRADE_WORDS.matches(name)) continue
+                    out.putIfAbsent(name, m.groupValues[2])
+                }
+            }
+            return out.map { it.key to it.value }
+        }
+
         /** Busca estado y nota de una materia dentro del texto de Guaraní. */
         fun findGrade(all: List<String>, name: String, others: List<String>): Pair<String, String?>? {
             val n = norm(name)
@@ -78,40 +99,51 @@ class Analyzer(private val c: Context) {
     }
 
     fun process(r: Scraper.Result) {
-        val res = Store.resumen(c)
+        val res = Store.resumen(c, pid)
         res.put("ultima_revision", Store.nowIso())
 
+        if (r.menuPublico.isNotEmpty() && r.state != Scraper.State.OK) {
+            val m = JSONArray()
+            r.menuPublico.forEach { (t, u) -> m.put(JSONObject().put("titulo", t).put("url", u)) }
+            Store.put(c, pid, "menu_publico", m)
+        }
         if (r.state != Scraper.State.OK) {
             val msg = when (r.state) {
                 Scraper.State.OFFLINE -> "Sin conexión con Guaraní (${r.message}). Se reintenta en la próxima revisión."
-                Scraper.State.NEED_LOGIN -> "La sesión de Guaraní venció y no hay usuario/clave guardados."
+                Scraper.State.NEED_LOGIN -> "La sesión de Guaraní venció y la contraseña no está guardada: entrá desde la pestaña Guaraní."
                 Scraper.State.LOGIN_FAILED -> "Guaraní rechazó el usuario o la clave. ${r.message}".trim()
                 Scraper.State.CAPTCHA -> "Guaraní pide un captcha: entrá una vez desde la pestaña Guaraní."
                 else -> ""
             }
-            Store.setStatus(c, "${shortNow()} · $msg")
+            Store.setStatus(c, pid, "${Store.shortNow()} · $msg")
             if (r.state != Scraper.State.OFFLINE) {
-                res.put("sesion", "vencida"); Store.putResumen(c, res)
-                if (!Store.flag(c, "session_warned")) {
-                    Store.setFlag(c, "session_warned", true)
-                    Notifier.notify(c, Notifier.CH_ESTADO, "Guaraní: hay que volver a entrar", msg, tab = "web")
+                res.put("sesion", "vencida"); Store.putResumen(c, pid, res)
+                if (!Store.flag(c, pid, "session_warned")) {
+                    Store.setFlag(c, pid, "session_warned", true)
+                    notify(Notifier.CH_ESTADO, "Guaraní: hay que volver a entrar", msg, tab = "web")
                 }
             }
             return
         }
-        Store.setFlag(c, "session_warned", false)
+        Store.setFlag(c, pid, "session_warned", false)
         res.put("sesion", "ok")
 
         // Páginas vigiladas: suma lo que se descubrió en el menú.
-        val w = Store.watched(c).toMutableList()
+        val w = Store.watched(c, pid).toMutableList()
         r.discovered.forEach { if (it !in w) w.add(it) }
-        Store.setWatched(c, w)
+        Store.setWatched(c, pid, w)
 
         // Menú del alumno tal como lo muestra Guaraní (para la pestaña Menú).
         if (r.menu.isNotEmpty()) {
             val m = JSONArray()
             r.menu.forEach { (t, u) -> m.put(JSONObject().put("titulo", t).put("url", u)) }
-            Store.put(c, "menu", m)
+            Store.put(c, pid, "menu", m)
+        }
+
+        if (r.menuPublico.isNotEmpty()) {
+            val m = JSONArray()
+            r.menuPublico.forEach { (t, u) -> m.put(JSONObject().put("titulo", t).put("url", u)) }
+            Store.put(c, pid, "menu_publico", m)
         }
 
         // 1) Cambios genéricos página por página.
@@ -119,8 +151,8 @@ class Analyzer(private val c: Context) {
         var baseline = 0
         for (p in r.pages) {
             val now = lines(p.text)
-            val old = Store.snapshot(c, p.url)
-            Store.setSnapshot(c, p.url, now)
+            val old = Store.snapshot(c, pid, p.url)
+            Store.setSnapshot(c, pid, p.url, now)
             if (old == null) { baseline++; continue }
             val oldSet = old.toHashSet(); val nowSet = now.toHashSet()
             val added = now.filter { it !in oldSet }
@@ -128,11 +160,13 @@ class Analyzer(private val c: Context) {
             if (added.isNotEmpty() || removed.isNotEmpty()) changes.add(Change(pageName(p), added, removed))
         }
 
-        // 2) Notas: materias de la Licenciatura y actividades de la Diplomatura.
+        // 2) Notas: materias de la carrera y actividades de otra propuesta.
         val allLines = r.pages.flatMap { lines(it.text) }
         val gradeMsgs = mutableListOf<String>()
+        val firstRun = !Store.flag(c, pid, "first_ok")
         gradeMsgs += updateGrades("materias", "materia", allLines)
         gradeMsgs += updateGrades("diplomatura", "actividad", allLines)
+        gradeMsgs += addDiscovered(r, firstRun)
 
         // 3) Resumen: promedio, avance y contadores.
         val joined = norm(allLines.joinToString("\n"))
@@ -143,12 +177,12 @@ class Analyzer(private val c: Context) {
         Regex("(\\d+)\\s*mensajes?\\s*(nuevos|sin leer|no leidos)").find(joined)?.groupValues?.get(1)?.toIntOrNull()?.let { res.put("mensajes", it) }
         Regex("(\\d+)\\s*encuestas?\\s*pendientes?").find(joined)?.groupValues?.get(1)?.toIntOrNull()?.let { res.put("encuestas_pendientes", it) }
         recount(res)
-        Store.putResumen(c, res)
+        Store.putResumen(c, pid, res)
 
         // 4) Notificaciones.
         if (gradeMsgs.isNotEmpty()) {
-            gradeMsgs.forEach { Store.addNovedad(c, "Nota", it) }
-            Notifier.notify(c, Notifier.CH_NOTAS,
+            gradeMsgs.forEach { Store.addNovedad(c, pid, "Nota", it) }
+            notify(Notifier.CH_NOTAS,
                 if (gradeMsgs.size == 1) "Nueva nota en Guaraní" else "${gradeMsgs.size} novedades de notas",
                 gradeMsgs.first(), gradeMsgs)
         }
@@ -156,29 +190,60 @@ class Analyzer(private val c: Context) {
         for (ch in changes) {
             val gradeLike = ch.added.filter { GRADE_WORDS.containsMatchIn(it) }
             val first = ch.added.firstOrNull() ?: "Se quitó: ${ch.removed.first()}"
-            Store.addNovedad(c, "Cambio", "${ch.page}: ${first.take(160)}")
+            Store.addNovedad(c, pid, "Cambio", "${ch.page}: ${first.take(160)}")
             val detail = ch.added.map { "+ $it" } + ch.removed.take(4).map { "− $it" }
             val inscLike = ch.added.filter { INSC_WORDS.containsMatchIn(norm(it)) }
             when {
                 gradeLike.isNotEmpty() && gradeMsgs.isEmpty() ->
-                    Notifier.notify(c, Notifier.CH_NOTAS, "Movimiento de notas: ${ch.page}", gradeLike.first(), detail)
+                    notify(Notifier.CH_NOTAS, "Movimiento de notas: ${ch.page}", gradeLike.first(), detail)
                 inscLike.isNotEmpty() ->
-                    Notifier.notify(c, Notifier.CH_INSC, "Inscripciones y fechas: ${ch.page}", inscLike.first(), detail, tab = "web")
+                    notify(Notifier.CH_INSC, "Inscripciones y fechas: ${ch.page}", inscLike.first(), detail, tab = "web")
                 notifyAll ->
-                    Notifier.notify(c, Notifier.CH_CAMBIOS, "Cambió algo en ${ch.page}", first, detail, tab = "web")
+                    notify(Notifier.CH_CAMBIOS, "Cambió algo en ${ch.page}", first, detail, tab = "web")
             }
         }
-        if (baseline > 0 && changes.isEmpty() && gradeMsgs.isEmpty() && !Store.flag(c, "baseline_done")) {
-            Store.setFlag(c, "baseline_done", true)
-            Store.addNovedad(c, "Inicio", "La app tomó la foto inicial de ${r.pages.size} páginas de Guaraní. Desde ahora avisa cada cambio.")
+        if (baseline > 0 && changes.isEmpty() && gradeMsgs.isEmpty() && !Store.flag(c, pid, "baseline_done")) {
+            Store.setFlag(c, pid, "baseline_done", true)
+            Store.addNovedad(c, pid, "Inicio", "La app tomó la foto inicial de ${r.pages.size} páginas de Guaraní. Desde ahora avisa cada cambio.")
         }
+        Store.setFlag(c, pid, "first_ok", true)
         val total = changes.size + gradeMsgs.size
-        Store.setStatus(c, "${shortNow()} · ${r.pages.size} páginas revisadas · " +
+        Store.setStatus(c, pid, "${Store.shortNow()} · ${r.pages.size} páginas revisadas · " +
             if (total == 0) "sin cambios" else "$total novedad(es)")
     }
 
+    private fun notify(ch: String, title: String, text: String, lines: List<String> = emptyList(), tab: String = "dash") {
+        val t = if (Profiles.all(c).size > 1) "${prof.nombre} · $title" else title
+        Notifier.notify(c, ch, t, text, lines, tab, pid)
+    }
+
+    /** Suma a la lista las materias nuevas que aparecen en la historia académica. */
+    private fun addDiscovered(r: Scraper.Result, firstRun: Boolean): List<String> {
+        val pages = r.pages.map { it.url to lines(it.text) }
+        val found = discoverActivities(pages)
+        if (found.isEmpty()) return emptyList()
+        val mat = Store.arr(c, pid, "materias"); val dip = Store.arr(c, pid, "diplomatura")
+        val known = (0 until mat.length()).map { norm(mat.getJSONObject(it).optString("materia")) } +
+            (0 until dip.length()).map { norm(dip.getJSONObject(it).optString("actividad")) }
+        val all = pages.flatMap { it.second }
+        val names = found.map { it.first }
+        val msgs = mutableListOf<String>()
+        for ((name, code) in found) {
+            if (norm(name) in known) continue
+            val g = findGrade(all, name, names)
+            val cat = g?.first ?: "otra"
+            val nota = g?.second
+            mat.put(org.json.JSONObject().put("codigo", code).put("materia", name).put("estado", label(cat))
+                .put("nota", nota?.let { it.toIntOrNull() ?: it } ?: org.json.JSONObject.NULL)
+                .put("fecha", Store.today()).put("detalle", "Leída de la historia académica"))
+            if (!firstRun && nota != null) msgs.add("$name: ${label(cat).lowercase()} con $nota.")
+        }
+        Store.put(c, pid, "materias", mat)
+        return msgs
+    }
+
     private fun updateGrades(ds: String, nameField: String, all: List<String>): List<String> {
-        val arr = Store.arr(c, ds)
+        val arr = Store.arr(c, pid, ds)
         val names = (0 until arr.length()).map { arr.getJSONObject(it).optString(nameField) }
         val msgs = mutableListOf<String>()
         for (i in 0 until arr.length()) {
@@ -196,12 +261,12 @@ class Analyzer(private val c: Context) {
             o.put("detalle", "Actualizado por la app: ${label(cat)}${nota?.let { " con $it" } ?: ""}")
             msgs.add("$name: ${label(cat).lowercase()}${nota?.let { " con $it" } ?: ""}.")
         }
-        if (msgs.isNotEmpty()) Store.put(c, ds, arr)
+        if (msgs.isNotEmpty()) Store.put(c, pid, ds, arr)
         return msgs
     }
 
     private fun recount(res: JSONObject) {
-        val m = Store.arr(c, "materias")
+        val m = Store.arr(c, pid, "materias")
         var aprob = 0; var pend = 0; var curso = 0
         for (i in 0 until m.length()) when (category(m.getJSONObject(i).optString("estado"))) {
             "aprobada", "promocionada" -> aprob++
@@ -217,6 +282,4 @@ class Analyzer(private val c: Context) {
         return (if (slug.isNotBlank() && slug.length < 40) slug.replaceFirstChar { it.uppercase() } else t).ifBlank { "Guaraní" }
     }
 
-    private fun shortNow(): String =
-        java.time.ZonedDateTime.now(Store.TZ).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM HH:mm"))
 }

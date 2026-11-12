@@ -87,14 +87,15 @@ windows/           Aplicación para Windows (Electron): ventana, bandeja, puente
 puente-mqtt/       Puente MQTT de Python, para el portal en el navegador (las apps ya lo traen)
 publicado/         Archivos listos para usar: portal, APK e instructivos
 docs/              Fuentes de los tres instructivos (texto, capturas y generador)
-guarani-al-dia/    Proyecto aparte: app Android para SIU Guaraní del IUGNA (ver abajo)
+guarani-al-dia/    Proyecto aparte: app Android para SIU Guaraní, cualquier institución (ver abajo)
 ```
 
 ### Otro proyecto en este repositorio: Guaraní al día
 
-[`guarani-al-dia/`](guarani-al-dia/) no tiene relación con la red LoRa: es una app Android para el
-**SIU Guaraní del IUGNA**. Trae Guaraní completo adentro y lo revisa sola en segundo plano, y te
-avisa cuando cargan una nota, se abre una inscripción o cambia algo. El APK está en
+[`guarani-al-dia/`](guarani-al-dia/) no tiene relación con la red LoRa: es una app Android libre
+para estudiantes de **cualquier institución que use SIU Guaraní**. Trae Guaraní completo adentro,
+admite varias cuentas (una por facultad o institución), puede guardar la contraseña cifrada en el
+teléfono y avisa cuando cargan una nota, se abre una inscripción o cambia algo. El APK está en
 [`guarani-al-dia/publicado/`](guarani-al-dia/publicado/) y todo lo demás, en su
 [README](guarani-al-dia/README.md).
 

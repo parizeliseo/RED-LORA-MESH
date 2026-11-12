@@ -21,7 +21,8 @@ class Scraper(private val ctx: Context) {
     enum class State { OK, NEED_LOGIN, LOGIN_FAILED, CAPTCHA, OFFLINE }
     data class Page(val url: String, val title: String, val text: String)
     data class Result(val state: State, val pages: List<Page>, val discovered: List<String>, val message: String = "",
-                      val menu: List<Pair<String, String>> = emptyList())
+                      val menu: List<Pair<String, String>> = emptyList(),
+                      val menuPublico: List<Pair<String, String>> = emptyList())
 
     private lateinit var wv: WebView
     @Volatile private var loading = false
@@ -50,9 +51,13 @@ class Scraper(private val ctx: Context) {
   document.querySelectorAll('a[href]').forEach(function(a){ links.push([a.href,(a.innerText||a.title||'').trim().slice(0,80)]); });
   var menu=[]; document.querySelectorAll('li.js-menuitem-root a, .navbar .nav a, .dropdown-menu a').forEach(function(a){
     var t=(a.innerText||'').trim(); if(t && a.href && a.href.slice(-1)!=='#') menu.push([t,a.href]); });
+  if(pw){ (document.querySelectorAll('#kernel_contenido a[href]')||[]).forEach(function(a){
+    var t=(a.innerText||'').trim(); if(t.length>3 && a.href.slice(-1)!=='#') menu.push([t,a.href]); }); }
   var cap=!!document.querySelector('img[src*=captcha i],input[name*=captcha i],.g-recaptcha,iframe[src*=recaptcha]');
   var err=(document.querySelector('.alert-error,.alert-danger,.error,.mensaje_error')||{}).innerText||'';
-  return JSON.stringify({url:location.href,title:document.title,login:!!(pw&&pw.offsetParent!==null),captcha:cap,error:err,
+  var ssoA=document.querySelector('a[href*="auth=saml"],a[href*="auth=cas"],a[href*="auth=oidc"],a[href*="auth=arai"]');
+  var sso=(!pw||pw.offsetParent===null)&&ssoA?ssoA.href:'';
+  return JSON.stringify({url:location.href,title:document.title,login:!!(pw&&pw.offsetParent!==null),sso:sso,captcha:cap,error:err,
      text:(main&&main.innerText)||'',links:links,menu:menu});
 })()"""
     }
@@ -126,23 +131,50 @@ class Scraper(private val ctx: Context) {
         return true
     }
 
-    suspend fun run(base: String, user: String, pass: String, watched: List<String>): Result {
+    private fun needsLogin(d: JSONObject) = d.optBoolean("login") || d.optString("sso").isNotEmpty()
+
+    /**
+     * Entra a Guaraní. Sirve para el formulario propio de Guaraní y para el ingreso único de la
+     * institución (SAML/CAS: botón «Acceder» que lleva a otra página donde se pone la contraseña).
+     * Devuelve null si entró, o el estado de falla.
+     */
+    private suspend fun signIn(home: JSONObject, user: String, pass: String): State? {
+        var d = home
+        val sso = d.optString("sso")
+        if (sso.isNotEmpty()) {
+            load(sso)
+            d = extract()
+            if (!needsLogin(d)) return null           // el ingreso único ya tenía la sesión abierta
+        }
+        if (user.isEmpty() || pass.isEmpty()) return State.NEED_LOGIN
+        if (d.optBoolean("captcha")) return State.CAPTCHA
+        if (!d.optBoolean("login")) return State.LOGIN_FAILED
+        login(user, pass)
+        val after = extract()
+        lastError = after.optString("error")
+        if (needsLogin(after)) return if (after.optBoolean("captcha")) State.CAPTCHA else State.LOGIN_FAILED
+        return null
+    }
+    private var lastError = ""
+
+    suspend fun run(baseIn: String, user: String, pass: String, watched: List<String>): Result {
         build()
         try {
-            load(base)
+            load(baseIn)
             if (mainError != null) return Result(State.OFFLINE, emptyList(), emptyList(), mainError ?: "")
             var home = extract()
-            if (home.optBoolean("login")) {
-                if (user.isEmpty() || pass.isEmpty()) return Result(State.NEED_LOGIN, emptyList(), emptyList())
-                if (home.optBoolean("captcha")) return Result(State.CAPTCHA, emptyList(), emptyList())
-                login(user, pass)
-                home = extract()
-                if (home.optBoolean("login")) {
-                    val st = if (home.optBoolean("captcha")) State.CAPTCHA else State.LOGIN_FAILED
-                    return Result(st, emptyList(), emptyList(), home.optString("error"))
-                }
-                // Tras el login Guaraní suele dejarnos en la portada; la volvemos a cargar para leer el menú completo.
-                if (!sameDoc(home.optString("url"), base)) { load(base); home = extract() }
+            // Si Guaraní redirige a otra dirección (otro servidor o carpeta), se toma esa como base.
+            val eff = clean(home.optString("url", baseIn))
+            // (Si nos mandó a la página de ingreso de otro servidor, la base sigue siendo la de la cuenta.)
+            val otroServidor = !Uri.parse(eff).host.equals(Uri.parse(baseIn).host, true)
+            val base = if (otroServidor && !home.optBoolean("login")) Profiles.normalizeUrl(eff) else baseIn
+            val publico = if (needsLogin(home)) menuOf(home) else emptyList()
+            fun fail(st: State, msg: String = "") = Result(st, emptyList(), emptyList(), msg, menuPublico = publico)
+            if (needsLogin(home)) {
+                signIn(home, user, pass)?.let { return fail(it, lastError) }
+                // Tras entrar, Guaraní suele dejarnos en la portada; la volvemos a cargar para leer el menú completo.
+                load(base); home = extract()
+                if (needsLogin(home)) return fail(State.LOGIN_FAILED, home.optString("error"))
             }
             val homeUrl = clean(home.optString("url", base))
             val pages = mutableListOf(Page(homeUrl, home.optString("title", "Inicio"), home.optString("text")))
@@ -162,9 +194,9 @@ class Scraper(private val ctx: Context) {
                 load(u)
                 if (mainError != null) continue
                 val d = extract()
-                if (d.optBoolean("login")) {
+                if (needsLogin(d)) {
                     // La sesión venció a mitad de camino: reintenta una vez con las credenciales.
-                    if (user.isEmpty() || !login(user, pass)) return Result(State.NEED_LOGIN, pages, good)
+                    if (signIn(d, user, pass) != null) return Result(State.NEED_LOGIN, pages, good)
                     load(u)
                 }
                 val e = extract()
@@ -177,14 +209,18 @@ class Scraper(private val ctx: Context) {
                 pages.add(Page(finalUrl, e.optString("title", u), text))
                 good.add(finalUrl)
             }
-            val menu = mutableListOf<Pair<String, String>>()
-            val mj = home.optJSONArray("menu") ?: JSONArray()
-            for (i in 0 until mj.length()) mj.optJSONArray(i)?.let { menu.add(it.optString(0) to clean(it.optString(1))) }
-            return Result(State.OK, pages, good, menu = menu.distinctBy { it.second })
+            return Result(State.OK, pages, good, menu = menuOf(home), menuPublico = publico)
         } finally {
             runCatching { wv.stopLoading(); wv.destroy() }
             CookieManager.getInstance().flush()
         }
+    }
+
+    private fun menuOf(d: JSONObject): List<Pair<String, String>> {
+        val menu = mutableListOf<Pair<String, String>>()
+        val mj = d.optJSONArray("menu") ?: JSONArray()
+        for (i in 0 until mj.length()) mj.optJSONArray(i)?.let { menu.add(it.optString(0) to clean(it.optString(1))) }
+        return menu.filter { it.second.startsWith("http") }.distinctBy { it.second }
     }
 
     private fun clean(u: String) = u.substringBefore('#').trim()

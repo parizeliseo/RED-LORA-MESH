@@ -36,11 +36,11 @@ object Notifier {
         })
     }
 
-    fun notify(c: Context, channel: String, title: String, text: String, lines: List<String> = emptyList(), tab: String = "dash") {
+    fun notify(c: Context, channel: String, title: String, text: String, lines: List<String> = emptyList(), tab: String = "dash", pid: String? = null) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val id = (System.currentTimeMillis() % Int.MAX_VALUE).toInt() xor title.hashCode()
-        val intent = Intent(c, MainActivity::class.java).putExtra("tab", tab)
+        val intent = Intent(c, MainActivity::class.java).putExtra("tab", tab).putExtra("pid", pid)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pi = PendingIntent.getActivity(c, id, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val big = if (lines.isEmpty()) text else lines.take(8).joinToString("\n")

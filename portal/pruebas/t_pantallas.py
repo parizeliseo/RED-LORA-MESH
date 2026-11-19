@@ -19,7 +19,6 @@ with sync_playwright() as p:
         pg.evaluate("() => window.__ui.startDemo()"); pg.wait_for_timeout(1200)
         pantallas, malas, anchas = 0, [], []
         def revisar(etq):
-            global pantallas
             r = pg.evaluate(REVISAR, movil)
             if r["prohibida"]: malas.append(etq)
             if movil and r["ancho"] > vp["width"] + 1: anchas.append("%s (%d px)" % (etq, r["ancho"]))

@@ -32,10 +32,12 @@ async def main():
         await pg2.evaluate("()=>window.__ui.setView('settings','portal.copia')"); await pg2.wait_for_timeout(600)
         await pg2.set_input_files("input[type=file][accept*=json]", ruta)
         await pg2.wait_for_timeout(2500)   # restaura y recarga
-        r = await pg2.evaluate("""()=>({ msgs: JSON.parse(localStorage.getItem('meshportal:123:msgs')||'[]').length,
-             texto: (JSON.parse(localStorage.getItem('meshportal:123:msgs')||'[]')[1]||{}).text,
+        # desde la versión 1.12 los mensajes van al almacén grande (IndexedDB), no a localStorage
+        r = await pg2.evaluate("""async ()=>{ await window.__datos.ALM.listo; const m = (await window.__datos.almLeerLista('meshportal:123:msgs')) || JSON.parse(localStorage.getItem('meshportal:123:msgs')||'[]'); return { msgs: m.length,
+             texto: (m[1]||{}).text,
              favs: localStorage.getItem('meshportal:favs'), viejo: localStorage.getItem('meshportal:viejo'),
-             ajeno: localStorage.getItem('otra-cosa') })""")
+             ajeno: localStorage.getItem('otra-cosa') }; }""")
+        assert r["msgs"] == 2 and r["texto"] == "árbol caído km 12" and r["favs"] == "[5,6]" and r["viejo"] is None, r
         print("restaurado:", r)
         # 3) un archivo cualquiera no debe romper nada
         open(os.path.join(tempfile.gettempdir(), "malo.json"),"w").write('{"hola":1}')

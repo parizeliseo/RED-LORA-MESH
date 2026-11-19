@@ -113,7 +113,7 @@ const chequeo = (nombre, cond, detalle) => { if (!cond) fallas++; console.log(ok
   chequeo("cerrar con la X → sigue en la bandeja", tras.existe && tras.visible === false, tras);
 
   /* 10) copia de seguridad dentro del programa */
-  const copia = await win.evaluate(() => { const c = window.__copia.copiaArmar(); return { origen: c.origen, claves: c.claves }; });
+  const copia = await win.evaluate(async () => { const c = await window.__copia.copiaArmar(); return { origen: c.origen, claves: c.claves }; });
   chequeo("copia de seguridad sabe que es la app de Windows", copia.origen === "aplicación de Windows", copia);
 
   chequeo("sin errores de JavaScript", errores.length === 0, errores);

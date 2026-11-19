@@ -23,7 +23,7 @@ ch("Instalar la aplicación",
  ("table", ["Requisito", "Detalle"], [
    ["Android", "7.0 o más nuevo."],
    ["Nodo LoRa Mesh", "Un módulo con firmware 2.x. Se probó contra Heltec V3 con firmware 2.8."],
-   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.11.apk</b>. No está en Google Play: se instala desde el archivo."],
+   ["Archivo", "<b>OPEN-SOURCE-PARIZ-app-1.12.apk</b>. No está en Google Play: se instala desde el archivo."],
    ["Para cable USB", "Un adaptador <b>OTG</b> y un cable de datos (muchos cables son solo de carga)."]]),
  ("h3", "Pasos"),
  ("steps", [
@@ -34,7 +34,7 @@ ch("Instalar la aplicación",
    "Abrí la app."]),
  ("h3", "Actualizar a una versión nueva"),
  ("p", "Instalá la APK nueva encima de la anterior: los mensajes, los nodos y los ajustes se conservan. Funciona porque todas las versiones van firmadas con la misma <b>clave de firma</b>. Esa clave se entrega aparte y hay que guardarla en un lugar seguro: si se pierde, las versiones futuras ya no se van a poder instalar encima y vas a tener que desinstalar, perdiendo lo guardado en el teléfono."),
- ("note", "Para saber qué versión tenés abierta, mirá en el menú lateral, en <b>Versión del software</b>: dice <b>Portal: 1.11 (app)</b> y la fecha."),
+ ("note", "Para saber qué versión tenés abierta, mirá en el menú lateral, en <b>Versión del software</b>: dice <b>Portal: 1.12 (app)</b> y la fecha."),
 )
 
 ch("Permisos que pide y para qué",

@@ -143,7 +143,9 @@ python3 build_manual.py      # o build_app.py
 Conviene ser claro sobre esto:
 
 - El **portal** se prueba de forma automatizada contra un nodo simulado: mensajes, reintentos,
-  MQTT, mapa, topología, guardia, rendimiento y escaneo de red.
+  MQTT, mapa, topología, guardia, rendimiento y escaneo de red. En cada cambio, GitHub corre además
+  las pruebas de `portal/pruebas/`: todas las pantallas en PC y teléfono, una carga de 10.000 nodos
+  y 50.000 mensajes con tiempos máximos, el almacén del historial y la conexión a un nodo simulado.
 - La **aplicación Android** se prueba con un puente simulado que reproduce lo que hace el
   teléfono (Bluetooth, USB, red, avisos y GPS), y el código Java compila limpio.
 - La **aplicación para Windows** se arma y se prueba en una computadora con Windows de GitHub

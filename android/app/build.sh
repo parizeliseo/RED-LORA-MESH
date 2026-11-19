@@ -37,8 +37,12 @@ $T/bin/aapt2_64 link -o $O/base.apk -I $T/android-34.jar --manifest $P/AndroidMa
   -A $O/assets --java $O/gen --min-sdk-version 24 --target-sdk-version 34 $O/res.zip
 
 # 3) código Java → dex
-javac -nowarn -Xlint:none -source 8 -target 8 -bootclasspath $T/android-34.jar -encoding UTF-8 \
+# android-34.jar puede ser el del SDK (trae java.lang) o el de Robolectric (android-all, que no lo
+# trae completo): en ese caso las clases de Java salen del propio JDK con --release 8.
+if unzip -l $T/android-34.jar 2>/dev/null | grep -q " java/lang/String.class"; then JOPC="-source 8 -target 8 -bootclasspath $T/android-34.jar"; else JOPC="--release 8 -classpath $T/android-34.jar"; fi
+javac -nowarn -Xlint:none $JOPC -encoding UTF-8 \
   -d $O/cls $(find $P/java $O/gen -name '*.java') 2>&1 | grep -v -E "^warning|^Note|bootstrap class path|^1 warning|options" || true
+[ -n "$(find $O/cls -name '*.class' | head -1)" ] || { echo "No compiló el código Java"; exit 1; }
 (cd $O/cls && jar cf ../classes.jar .)
 java -cp "$DX_JAR" com.android.dx.command.Main --dex --min-sdk-version=24 --output=$O/classes.dex $O/classes.jar
 

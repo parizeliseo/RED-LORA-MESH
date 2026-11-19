@@ -5,6 +5,65 @@ así que cada versión se instala encima de la anterior y conserva mensajes, nod
 
 ---
 
+## 1.12 — 19 de noviembre de 2026
+
+Más capacidad y más velocidad en el portal y en las dos aplicaciones (comparten el mismo portal).
+
+### Guarda mucho más
+
+- El historial (mensajes, eventos, telemetría y recorridos) pasa a un **almacén grande del
+  navegador**, en vez del almacenamiento chico que tenía un tope de pocos megabytes. Los ajustes
+  siguen donde estaban.
+- **Topes nuevos:** 50.000 mensajes (antes 4.000), 20.000 eventos, 2.000 mediciones de telemetría
+  por nodo de radio (300 por nodo que llega solo por MQTT), 200 rutas medidas y hasta 20.000 nodos
+  en la lista (5.000 de fábrica; se cambia en Ajustes).
+- Se guarda **por bloques**: solo se reescribe lo que cambió, así que guardar con 50.000 mensajes
+  tarda unos milisegundos.
+- **Al actualizar no se pierde nada:** la primera vez que se abre la 1.12, pasa sola el historial
+  viejo al almacén grande. Si el navegador no tiene almacén grande (modo privado de algunos
+  navegadores), sigue funcionando como antes.
+- Las **copias de seguridad** incluyen todo el historial y siguen teniendo el mismo formato: una
+  copia hecha con la 1.12 se puede restaurar en la 1.11 y al revés.
+- *Rendimiento* muestra cuánto ocupa el almacén grande y cuánto el chico.
+
+### Más rápido con redes grandes
+
+- **Topología:** se sacaron cálculos que crecían con el cuadrado de la cantidad de nodos. Con
+  miles de nodos por MQTT se dibuja la banda más cercana (hasta 180) y los rótulos de los enlaces
+  solo aparecen cuando son pocos.
+- **Mapa:** dibuja los puntos agrupados por color, recorta las líneas largas al borde de la
+  pantalla, evita que los nombres se encimen y, con más de 2.500 nodos a la vista, usa puntos
+  chicos. Con datos llegando sin parar se redibuja como mucho cuatro veces por segundo.
+- Los nodos que solo se conocen por MQTT ya no parpadean en el mapa (parpadean los de radio).
+- *Guardia* con muchos nodos: el nodo se elige escribiendo, con sugerencias, en vez de una lista
+  de miles de renglones.
+- **Medido:** con 10.000 nodos y 50.000 mensajes, todas las pantallas abren en menos de un tercio
+  de segundo y el mapa se dibuja en unos 20 milisegundos.
+
+### Arreglos
+
+- Un servidor MQTT **de la red local** cargado como dirección y puerto (sin `mqtt://…`) quedaba
+  bloqueado al trabajar sin Internet. Ahora se reconoce como local.
+
+### Pruebas automáticas nuevas (`portal/pruebas/`)
+
+- `t_pantallas.py`: las 46 pantallas en PC y en dos tamaños de teléfono.
+- `t_carga.py`: 10.000 nodos y 50.000 mensajes, con tiempos máximos que no se pueden pasar.
+- `t_almacen.py`: paso del historial viejo, guardado por bloques, copia y restauración, y
+  navegador sin almacén grande.
+- `t_conectado.py`: el portal conectado a un nodo simulado por red: recibe, manda, confirma
+  «enviado ✓» y conserva todo al volver a abrir.
+- GitHub las corre en cada cambio, dentro de *Compilar el portal*.
+
+### Aplicaciones
+
+- **Windows 1.12.0:** Electron 45 y componentes al día; sin avisos de seguridad en lo que se instala.
+- **Android 1.12** (versionCode 13): mismo portal nuevo. Se firma con la clave de siempre en la
+  computadora donde está guardada; mientras no esté firmada, la APK publicada sigue siendo la 1.11.
+- Los tres instructivos, actualizados a la 1.12.
+
+---
+
 ## Mantenimiento — 11 de noviembre de 2026
 
 No cambia el portal ni las aplicaciones (siguen en 1.11); cambia el puente de Python y las

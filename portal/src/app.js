@@ -15,7 +15,7 @@ import * as NPort from "./pb/portnums_pb.js";
 import FIELD_META from "./meta.json";
 import qrcode from "qrcode-generator";
 import jsQR from "jsqr";
-const PORTAL_VER = "1.11", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
+const PORTAL_VER = "1.12", PORTAL_BUILD = "__BUILD__"; /* la fecha la pone build.mjs al compilar */
 const IS_APP = typeof window !== "undefined" && !!window.AndroidBridge; /* app de Android: Bluetooth, USB, archivos e impresión los da el teléfono */
 const IS_DESK = typeof window !== "undefined" && !!window.__escritorio; /* aplicación de Windows: red, puente MQTT, avisos e impresión los da el programa */
 const ESC = () => (IS_DESK ? window.__escritorio : null);
@@ -149,7 +149,7 @@ const ready = () => S.demo || S.status === ST.DeviceConfigured;
 
 /* ───────────────────────── nodos ───────────────────────── */
 function pruneNodes(force) { /* saca de la libreta los nodos viejos que llegaron por Internet; nunca toca el tuyo, los favoritos ni los de radio */
-  const c = opsCfg(), keep = (c.keepDays || 7) * 86400, max = c.maxNodes || 1500, now = Date.now() / 1000;
+  const c = opsCfg(), keep = (c.keepDays || 7) * 86400, max = c.maxNodes || 5000, now = Date.now() / 1000;
   if (!force && S.nodes.size <= max) return 0;
   const borrables = [], escribieron = new Set();
   for (const m of S.msgs) { escribieron.add(m.from); escribieron.add(m.to); }
@@ -161,7 +161,7 @@ function pruneNodes(force) { /* saca de la libreta los nodos viejos que llegaron
   borrables.sort((a, b) => (a.lastHeard || 0) - (b.lastHeard || 0));
   let sobra = force ? borrables.length : Math.max(borrables.length, S.nodes.size - max);
   let k = 0;
-  for (const n of borrables) { if (k >= sobra) break; S.nodes.delete(n.num); S.tele.delete(n.num); S.tracks.delete(n.num); S.neigh.delete(n.num); k++; }
+  for (const n of borrables) { if (k >= sobra) break; S.nodes.delete(n.num); S.tele.delete(n.num); S.tracks.delete(n.num); S.neigh.delete(n.num); teleSucio.add(n.num); k++; }
   if (k) { S.stPrev && [...S.stPrev.keys()].forEach((id) => !S.nodes.has(id) && S.stPrev.delete(id)); scheduleRefresh("nodes"); }
   return k;
 }
@@ -170,10 +170,11 @@ function upsertNode(num, patch = {}) {
   let n = S.nodes.get(num);
   if (!n) { n = { num, user: null, pos: null, lastHeard: 0, snr: null, rssi: null, hops: null }; S.nodes.set(num, n); }
   for (const [k, v] of Object.entries(patch)) if (v !== undefined) n[k] = v;
-  scheduleRefresh("nodes");
+  datosRev++; scheduleRefresh("nodes");
   return n;
 }
 const maskName = (t) => (t || "").replace(/meshtastic/gi, "LoRa Mesh");
+const ORDEN = new Intl.Collator("es", { numeric: true, sensitivity: "base" }); /* mucho más rápido que localeCompare para ordenar miles de nombres */
 const nodeName = (n) => (n && n.user && n.user.longName) || "LoRa Mesh " + (n ? hex8(n.num).slice(-4) : "????");
 const nodeShort = (n) => (n && n.user && n.user.shortName) || (n ? hex8(n.num).slice(-4) : "????");
 const nameOf = (num) => nodeName(S.nodes.get(num) || { num });
@@ -205,33 +206,144 @@ function battText(b) {
 }
 
 function cacheKey(k) { return `meshportal:${S.me}:${k}`; }
-let saveT = 0, msgCap = 4000, lastSaveSig = "";
+
+/* ───────────────────────── almacén grande (IndexedDB) ─────────────────────────
+   Hasta la versión 1.11 los mensajes, la libreta de nodos, la telemetría y el registro de
+   novedades se guardaban en el almacenamiento chico del navegador (localStorage), que tiene
+   unos 5 MB para todo. Con una red movida se llenaba enseguida y el portal tenía que recortar:
+   guardaba 4000 mensajes como mucho (y bajaba a 300 si no entraban) y 150 muestras de
+   telemetría por nodo. Además, cada guardado convertía todo a texto de una vez y la pantalla se
+   trababa un instante.
+   Ahora van a IndexedDB, que deja usar cientos de MB, en bloques: cada guardado escribe solo lo
+   que cambió. Lo chico (ajustes, servidores, conexiones) sigue donde estaba. Lo que había en el
+   lugar viejo se pasa solo la primera vez. Si el navegador no deja usar IndexedDB (algunos modos
+   privados), todo sigue funcionando como antes. */
+const MSG_MAX = 50000, EV_MAX = 20000, TELE_MAX = 2000, BLOQUE = 2000;
+const GRANDE = /^meshportal:(\d+:(msgs|nodes|tele)|events)$/; /* lo que se muda al almacén grande */
+const ALM = { db: null, ok: false, listo: null };
+function almAbrir() {
+  return new Promise((res) => {
+    try {
+      const r = indexedDB.open("lora-mesh-datos", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => { const db = r.result; db.onversionchange = () => db.close(); res(db); };
+      r.onerror = () => res(null); r.onblocked = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+const almTx = (modo, fn) => new Promise((res, rej) => {
+  const tx = ALM.db.transaction("kv", modo), st = tx.objectStore("kv"), out = fn(st);
+  tx.oncomplete = () => res(out && "result" in out ? out.result : undefined); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error || new Error("guardado cancelado"));
+});
+const almGet = (k) => ALM.ok ? almTx("readonly", (st) => st.get(k)).catch(() => undefined) : Promise.resolve(undefined);
+async function almClaves(prefijo) { if (!ALM.ok) return []; try { return await almTx("readonly", (st) => st.getAllKeys(IDBKeyRange.bound(prefijo, prefijo + "\uffff"))); } catch (e) { return []; } }
+async function almBorrarPrefijo(prefijo) { if (!ALM.ok) return; try { await almTx("readwrite", (st) => st.delete(IDBKeyRange.bound(prefijo, prefijo + "\uffff"))); } catch (e) {} bloqFirmas.forEach((_, k) => k.startsWith(prefijo) && bloqFirmas.delete(k)); }
+/* Una lista larga se guarda en bloques de BLOQUE elementos; solo se reescriben los bloques que
+   cambiaron (normalmente el último). firma() resume lo que puede cambiar de cada elemento. */
+const bloqFirmas = new Map();
+async function almGuardarLista(clave, arr, firma, extra) {
+  const n = Math.ceil(arr.length / BLOQUE), prev = bloqFirmas.get(clave) || [], nuevas = [], puts = [];
+  for (let i = 0; i < n; i++) { /* dos sumas numéricas por bloque: rápido aun con 50.000 elementos */
+    let a = 0, b = 0; const fin = Math.min(arr.length, (i + 1) * BLOQUE);
+    for (let j = i * BLOQUE; j < fin; j++) { const x = firma(arr[j]); a = (a + x) | 0; b = Math.imul(b ^ x, 16777619); }
+    const f = a + ":" + b + ":" + (fin - i * BLOQUE);
+    nuevas.push(f); if (prev[i] !== f) puts.push(i);
+  }
+  if (!puts.length && prev.length === n && !extra) return 0;
+  await almTx("readwrite", (st) => {
+    for (const i of puts) st.put(arr.slice(i * BLOQUE, (i + 1) * BLOQUE), clave + "#" + i);
+    for (let i = n; i < prev.length; i++) st.delete(clave + "#" + i);
+    st.put({ v: 2, bloques: n, total: arr.length, ...(extra || {}) }, clave);
+  });
+  bloqFirmas.set(clave, nuevas);
+  return puts.length;
+}
+async function almLeerLista(clave) {
+  const cab = await almGet(clave); if (!cab) return null;
+  if (Array.isArray(cab)) return cab; /* guardado de una sola pieza */
+  const partes = await Promise.all(Array.from({ length: cab.bloques || 0 }, (_, i) => almGet(clave + "#" + i)));
+  const out = []; for (const p of partes) if (Array.isArray(p)) for (const x of p) out.push(x);
+  return out;
+}
+/* lo que puede cambiar de un mensaje ya guardado: estado, envío por MQTT, motivo, reacciones */
+const hashTxt = (t) => { let h = 0; if (t) for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619); return h; };
+const firmaMsg = (m) => {
+  let r = Math.imul((m.id | 0) ^ hashTxt(m.st), 2654435761);
+  if (m.up) r = Math.imul(r ^ (typeof m.up === "string" ? hashTxt(m.up) : 7), 2246822519);
+  if (m.why) r ^= Math.imul(m.why.length, 31); if (m.retryAt) r ^= m.retryAt | 0;
+  if (m.reacts) for (const k in m.reacts) r = Math.imul(r ^ (hashTxt(k) + m.reacts[k].length * 131), 3266489917);
+  return r;
+};
+const firmaEv = (e) => Math.imul((e.t | 0) ^ hashTxt(e.kind), 2654435761);
+ALM.listo = (async () => {
+  try { if (!window.indexedDB) return; } catch (e) { return; }
+  const db = await almAbrir(); if (!db) return;
+  ALM.db = db; ALM.ok = true;
+  /* mudanza: lo grande que había en el lugar viejo pasa al almacén grande y se libera */
+  const viejas = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && GRANDE.test(k)) viejas.push(k); } } catch (e) {}
+  for (const k of viejas) {
+    try {
+      const v = JSON.parse(localStorage.getItem(k));
+      if (/:nodes$/.test(k)) await almTx("readwrite", (st) => st.put(Array.isArray(v) ? v : [], k)); /* la libreta va entera, en una pieza */
+      else if (Array.isArray(v)) await almGuardarLista(k, v, /:msgs$/.test(k) ? firmaMsg : firmaEv);
+      else if (/:tele$/.test(k)) await teleGuardarObjeto(k, v);
+      localStorage.removeItem(k);
+    } catch (e) { /* si algo falla queda en el lugar viejo y se usa desde ahí */ }
+  }
+})();
+/* Mientras no se leyó lo guardado no se escribe nada: si no, la primera escritura pisaría el
+   historial con lo poco que llegó en los primeros segundos. */
+let restaurando = false, cacheLeido = false, saveT = 0, msgCap = 4000, datosRev = 0, lastSaveRev = -1, lastNodosRev = "";
+const marcarCambio = () => { datosRev++; };
 function persistSoon() {
   if (saveT) return; /* ya hay un guardado en camino: no se reinicia el reloj para que no se posponga para siempre */
-  saveT = setTimeout(() => {
-    saveT = 0;
-    if (!S.me || S.demo) return;
-    const sig = S.nodes.size + ":" + S.msgs.length + ":" + (S.msgs.length ? S.msgs[S.msgs.length - 1].id : 0) + ":" + (S.msgRev || 0);
-    if (sig === lastSaveSig) return; /* nada nuevo que guardar */
-    lastSaveSig = sig;
-    try {
-      const arr = [...S.nodes.values()].map(({ rawUser, ...r }) => r);
-      localStorage.setItem(cacheKey("nodes"), JSON.stringify(arr));
-      while (true) { /* si no entra se baja el tope y se recuerda, para no volver a intentar lo que ya falló */
-        try { localStorage.setItem(cacheKey("msgs"), JSON.stringify(S.msgs.slice(-msgCap))); break; }
-        catch (e) { if (msgCap <= 300) break; msgCap = Math.floor(msgCap / 3); }
-      }
-    } catch (e) { /* almacenamiento lleno o bloqueado */ }
-  }, 5000);
+  saveT = setTimeout(() => { saveT = 0; guardarAhora(); }, 5000);
 }
-function loadCache() {
+async function guardarAhora() {
+  if (!S.me || S.demo || restaurando) return;
+  if (!cacheLeido) return persistSoon();
+  /* tope de mensajes en memoria: se sueltan de a un bloque, así los bloques guardados no se corren en cada mensaje */
+  if (S.msgs.length > MSG_MAX + BLOQUE) S.msgs.splice(0, S.msgs.length - MSG_MAX);
+  const rev = datosRev + ":" + S.nodes.size + ":" + S.msgs.length + ":" + (S.msgRev || 0) + ":" + (S.msgs.length ? S.msgs[S.msgs.length - 1].id : 0);
+  if (rev === lastSaveRev) return; /* nada nuevo que guardar (los cambios de estado de los mensajes los ve la firma de cada bloque) */
+  lastSaveRev = rev;
+  const nodosRev = datosRev + ":" + S.nodes.size;
+  if (ALM.ok) {
+    try {
+      if (nodosRev !== lastNodosRev) { const nodos = [...S.nodes.values()].map(({ rawUser, ...r }) => r); await almTx("readwrite", (st) => st.put(nodos, cacheKey("nodes"))); lastNodosRev = nodosRev; }
+      await almGuardarLista(cacheKey("msgs"), S.msgs, firmaMsg);
+      return;
+    } catch (e) { /* disco lleno u otro problema: se intenta en el lugar viejo */ }
+  }
   try {
-    const nodes = JSON.parse(localStorage.getItem(cacheKey("nodes")) || "[]");
+    localStorage.setItem(cacheKey("nodes"), JSON.stringify([...S.nodes.values()].map(({ rawUser, ...r }) => r)));
+    while (true) { /* si no entra se baja el tope y se recuerda, para no volver a intentar lo que ya falló */
+      try { localStorage.setItem(cacheKey("msgs"), JSON.stringify(S.msgs.slice(-msgCap))); break; }
+      catch (e) { if (msgCap <= 300) break; msgCap = Math.floor(msgCap / 3); }
+    }
+  } catch (e) { /* almacenamiento lleno o bloqueado */ }
+}
+function leerViejo(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch (e) { return null; } }
+let cacheDe = 0;
+function loadCache() {
+  const me = S.me; if (cacheDe === me) return;
+  /* si antes había otro nodo conectado, sus mensajes no se mezclan con los de este */
+  const ajenos = cacheDe ? new Set(S.msgs) : null; cacheDe = me; cacheLeido = false;
+  if (ajenos) bloqFirmas.clear();
+  ALM.listo.then(async () => {
+    let nodes = null, msgs = null;
+    if (ALM.ok) { nodes = await almLeerLista(cacheKey("nodes")); msgs = await almLeerLista(cacheKey("msgs")); }
+    nodes = nodes || leerViejo(cacheKey("nodes")) || []; msgs = msgs || leerViejo(cacheKey("msgs")) || [];
+    if (S.me !== me) return;
     for (const n of nodes) if (!S.nodes.has(n.num)) S.nodes.set(n.num, n);
-    S.msgs = JSON.parse(localStorage.getItem(cacheKey("msgs")) || "[]");
-    S.msgs.forEach((m) => { if (m.mine && m.st === "retry") { m.st = "fail"; m.why = (m.why ? m.why + " · " : "") + "reintentos interrumpidos"; } });
-  } catch (e) { /* ignorar */ }
-  loadTele();
+    msgs.forEach((m) => { if (m.mine && m.st === "retry") { m.st = "fail"; m.why = (m.why ? m.why + " · " : "") + "reintentos interrumpidos"; } });
+    /* lo que llegó mientras se leía va después de lo guardado, sin repetir */
+    const ya = new Set(msgs.map((m) => m.id)); S.msgs = msgs.concat(S.msgs.filter((m) => !ya.has(m.id) && !(ajenos && ajenos.has(m))));
+    if (ALM.ok) bloqFirmas.set(cacheKey("msgs"), []);
+    await loadTele();
+    if (S.me !== me) return;
+    cacheLeido = true; scheduleRefresh("all"); persistSoon();
+  });
 }
 
 /* ───────────────────────── conexión ───────────────────────── */
@@ -345,7 +457,7 @@ function bindEvents(dev) {
     toast("Ruta: " + route);
     const q = (v) => (v == null || v === -128 ? null : v / 4); /* el firmware informa el SNR en cuartos de dB */
     S.traces.push({ t: Date.now(), me: p.to, dest: p.from, route: [...(p.data.route || [])], snrT: (p.data.snrTowards || []).map(q), back: [...(p.data.routeBack || [])], snrB: (p.data.snrBack || []).map(q) });
-    if (S.traces.length > 60) S.traces.splice(0, S.traces.length - 60);
+    if (S.traces.length > 200) S.traces.splice(0, S.traces.length - 200);
     try { localStorage.setItem("meshportal:traces", JSON.stringify(S.traces)); } catch (e) {}
     scheduleRefresh("tele");
   });
@@ -1138,13 +1250,22 @@ function scheduleRefresh(kind) {
     if (k.has("net")) { renderTopbar(); updRoute(); if (S.view === "settings" && S.sub === "portal.net") updNetView(); }
     if (k.has("nodes") || k.has("config") || k.has("side")) renderSide();
     if (k.has("nodes") || k.has("msgs")) renderRight();
-    if (k.has("nodes")) { if (S.view === "nodes") renderNodesTable(); if (S.view === "map") drawMap(); persistSoon(); }
+    if (k.has("nodes")) { if (S.view === "nodes") renderNodesTable(); if (S.view === "map") mapPorDatos(); persistSoon(); }
     if ((k.has("msgs") || k.has("config")) && S.view === "messages") renderTabs();
     if (k.has("msgs") && S.view === "messages") renderMsgList();
     if (k.has("config") && isCfgView() && !(S.form && S.form.isDirty())) renderMain();
     if (k.has("logs") && S.view === "console") renderLog();
     if (k.has("tele") && !teleDeb) teleDeb = setTimeout(() => { teleDeb = 0; if (S.view === "tele") renderTeleBody(); if (S.view === "map") drawMap(); }, 1500);
   });
+}
+/* Con mucho tráfico (MQTT) llegan cientos de novedades de nodos por segundo: el mapa se vuelve
+   a dibujar por eso como mucho cuatro veces por segundo. Mover o acercar el mapa sigue siendo inmediato. */
+let mapDatosT = 0, mapDatosUlt = 0;
+function mapPorDatos() {
+  if (mapDatosT) return;
+  const falta = 250 - (performance.now() - mapDatosUlt);
+  if (falta <= 0) { mapDatosUlt = performance.now(); drawMap(); return; }
+  mapDatosT = setTimeout(() => { mapDatosT = 0; mapDatosUlt = performance.now(); if (S.view === "map") drawMap(); }, falta);
 }
 let noLeidosAnt = -1;
 function noLeidosDesk() { /* en Windows: "(3) OPEN SOURCE PARIZ" en el título y en la bandeja */
@@ -1155,19 +1276,30 @@ function noLeidosDesk() { /* en Windows: "(3) OPEN SOURCE PARIZ" en el título y
 
 /* ───────────────────────── modo operativo: semáforo de nodos, alertas y registro de eventos ───────────────────────── */
 const OPS_KEY = "meshportal:ops", EV_KEY = "meshportal:events", AL_KEY = "meshportal:alerts";
-const OPS_DEF = { downMin: 120, lowBat: 20, weakSnr: -10, banner: true, keepDays: 7, maxNodes: 1500 };
+const OPS_DEF = { downMin: 120, lowBat: 20, weakSnr: -10, banner: true, keepDays: 7, maxNodes: 5000 };
 let opsMem = null;
 const opsCfg = () => { if (opsMem) return opsMem; let u = {}; try { u = JSON.parse(localStorage.getItem(OPS_KEY) || "{}"); } catch (e) {} return (opsMem = { ...OPS_DEF, ...u }); };
 const opsSave = (o) => { const v = { ...opsCfg(), ...o }; opsMem = v; try { localStorage.setItem(OPS_KEY, JSON.stringify(v)); } catch (e) {} scheduleRefresh("all"); };
-S.events = []; try { S.events = JSON.parse(localStorage.getItem(EV_KEY) || "[]"); } catch (e) {}
+S.events = []; let evLeidos = false;
+ALM.listo.then(async () => { /* lo guardado va antes de lo que se anotó mientras se leía */
+  let v = ALM.ok ? await almLeerLista(EV_KEY) : null; if (!v) v = leerViejo(EV_KEY) || [];
+  if (ALM.ok) bloqFirmas.set(EV_KEY, []);
+  S.events = v.concat(S.events); evLeidos = true; if (S.events.length !== v.length) evPersist(); scheduleRefresh("events");
+});
 S.alerts = new Map(); try { for (const [k, v] of JSON.parse(localStorage.getItem(AL_KEY) || "[]")) S.alerts.set(k, v); } catch (e) {}
 let evSaveT = 0;
-const evPersist = () => { clearTimeout(evSaveT); evSaveT = setTimeout(() => { try { localStorage.setItem(EV_KEY, JSON.stringify(S.events.slice(-2000))); localStorage.setItem(AL_KEY, JSON.stringify([...S.alerts])); } catch (e) {} }, 800); };
+const evPersist = () => { clearTimeout(evSaveT); evSaveT = setTimeout(async () => {
+  if (restaurando) return;
+  try { localStorage.setItem(AL_KEY, JSON.stringify([...S.alerts])); } catch (e) {}
+  if (!evLeidos) return evPersist();
+  if (ALM.ok) { try { await almGuardarLista(EV_KEY, S.events, firmaEv); return; } catch (e) {} }
+  try { localStorage.setItem(EV_KEY, JSON.stringify(S.events.slice(-2000))); } catch (e) {}
+}, 800); };
 const EV_KINDS = { panic: ["🚨", "Alerta de pánico recibida", true], panicout: ["🚨", "Alerta de pánico enviada", true], ack: ["✔", "Alerta atendida", false], down: ["🔴", "Nodo caído (sin señal)", true], up: ["🟢", "Nodo recuperado", false], lowbatt: ["🟡", "Batería baja", true], weak: ["🟡", "Señal débil", false], link: ["🔌", "Nodo local", false] };
 function logEvent(kind, num, text, t) {
   const n = num != null ? S.nodes.get(num) : null;
   S.events.push({ t: t || Date.now(), kind, num: num ?? null, name: n ? nodeName(n) : num != null ? "Nodo " + hex8(num).slice(-4) : "", text: text || "" });
-  if (S.events.length > 2500) S.events.splice(0, S.events.length - 2000);
+  if (S.events.length > EV_MAX + BLOQUE) S.events.splice(0, S.events.length - EV_MAX);
   evPersist(); scheduleRefresh("events");
 }
 const isAlertText = (t) => /^\s*(🚨|⚠|SOS\b|EMERGENCIA|P[ÁA]NICO|ALERTA)|\u0007/i.test(String(t || ""));
@@ -1177,7 +1309,9 @@ function nodeStatus(n) {
   const c = opsCfg(), now = Date.now() / 1000, why = [], al = S.alerts.get(n.num);
   if (al && !al.ack && Date.now() - al.t < 86400000) return { k: "panic", why: ["Alerta de pánico: " + al.text], blink: true };
   const isMe = n.num === S.me;
-  if (!isMe && n.lastHeard && now - n.lastHeard > c.downMin * 60) return { k: "down", why: ["Sin señal hace " + ago(n.lastHeard)], blink: true };
+  /* un nodo de radio que se calla parpadea; uno que llega por Internet y se calla es lo normal
+     (son cientos y entran y salen todo el tiempo): queda en rojo, pero quieto */
+  if (!isMe && n.lastHeard && now - n.lastHeard > c.downMin * 60) return { k: "down", why: ["Sin señal hace " + ago(n.lastHeard)], blink: !n.viaMqtt };
   if (!isMe && !n.lastHeard) return { k: "unk", why: ["Todavía no se escuchó"] };
   if (n.battery != null && n.battery <= c.lowBat) why.push("Batería baja: " + Math.round(n.battery) + " %");
   if (!isMe && n.snr != null && n.snr <= c.weakSnr) why.push("Señal débil: SNR " + n.snr.toFixed(1) + " dB");
@@ -1308,7 +1442,7 @@ function renderSide() {
   side.append(btns);
 }
 function setTheme(t) {
-  document.documentElement.dataset.theme = t;
+  document.documentElement.dataset.theme = t; cssMemo.clear();
   try { localStorage.setItem("meshportal:theme", t); } catch (e) {}
   scheduleRefresh("side");
   if (S.view === "map") drawMap();
@@ -1859,9 +1993,15 @@ function recordTele(num, cat, obj, t = Date.now(), minGap = 0) {
   const h = c.hist;
   if (h.length && h[h.length - 1].t === t) return;
   h.push({ t, ...obj });
-  if (h.length > 400) h.splice(0, h.length - 400);
-  scheduleRefresh("tele"); persistTeleSoon();
+  const tope = teleTope(num);
+  if (h.length > tope + 50) h.splice(0, h.length - tope); /* de a tandas: recortar en cada muestra movía toda la lista */
+  teleSucio.add(num); scheduleRefresh("tele"); persistTeleSoon();
 }
+/* Cuántas muestras se guardan por nodo y por tipo de dato. Los nodos de radio guardan unas seis
+   semanas con el envío normal cada 30 minutos; los que llegan por Internet, menos, porque
+   pueden ser miles y llenarían la memoria del celular. */
+const teleTope = (num) => { const n = S.nodes.get(num); return n && n.viaMqtt && num !== S.me ? 300 : TELE_MAX; };
+const teleSucio = new Set();
 function addTrackPoint(num, lat, lon, alt, t = Date.now()) {
   if (!lat && !lon) return;
   let tr = S.tracks.get(num); if (!tr) { tr = []; S.tracks.set(num, tr); }
@@ -1869,14 +2009,33 @@ function addTrackPoint(num, lat, lon, alt, t = Date.now()) {
   if (last && hav(last.lat, last.lon, lat, lon) < 0.003 && t - last.t < 600000) return;
   const nd = S.nodes.get(num);
   tr.push({ t, lat, lon, alt, snr: nd && nd.snr != null ? nd.snr : null });
-  if (tr.length > 400) tr.splice(0, tr.length - 400);
-  scheduleRefresh("tele");
+  const tope = teleTope(num);
+  if (tr.length > tope + 50) tr.splice(0, tr.length - tope);
+  teleSucio.add(num); scheduleRefresh("tele"); persistTeleSoon();
 }
 let teleT = 0;
 function persistTeleSoon() { if (teleT) return; teleT = setTimeout(() => { teleT = 0; saveTele(); }, 20000); }
-let teleCap = 150; /* muestras por categoría que se guardan en el navegador (en memoria se conservan todas) */
-function saveTele() {
-  if (!S.me || S.demo) return;
+let teleCap = 150; /* solo para el lugar viejo (sin IndexedDB): muestras por categoría que se guardan */
+/* En el almacén grande cada nodo va en su propia pieza y solo se reescriben los nodos que
+   recibieron datos nuevos desde el último guardado. */
+async function teleGuardarObjeto(clave, d) { /* para la mudanza desde el formato viejo */
+  const nums = new Set([...Object.keys(d.tele || {}), ...Object.keys(d.tracks || {})].map(Number));
+  await almTx("readwrite", (st) => { for (const num of nums) st.put({ cats: (d.tele || {})[num] || null, track: (d.tracks || {})[num] || null }, clave + "#" + num); st.put({ v: 2, nums: [...nums] }, clave); });
+}
+async function saveTele() {
+  if (!S.me || S.demo || restaurando) return;
+  if (!cacheLeido) return persistTeleSoon();
+  if (ALM.ok) {
+    const clave = cacheKey("tele"), sucios = [...teleSucio]; teleSucio.clear();
+    try {
+      const nums = new Set([...S.tele.keys(), ...S.tracks.keys()]);
+      await almTx("readwrite", (st) => {
+        for (const num of sucios) { if (nums.has(num)) st.put({ cats: S.tele.get(num) || null, track: S.tracks.get(num) || null }, clave + "#" + num); else st.delete(clave + "#" + num); }
+        st.put({ v: 2, nums: [...nums] }, clave);
+      });
+      return;
+    } catch (e) { for (const n of sucios) teleSucio.add(n); }
+  }
   while (true) {
     try {
       const o = {};
@@ -1890,11 +2049,19 @@ function saveTele() {
     }
   }
 }
-function loadTele() {
+async function loadTele() {
+  const clave = cacheKey("tele");
+  const cab = ALM.ok ? await almGet(clave) : null;
+  if (cab && cab.v === 2) {
+    const piezas = await Promise.all((cab.nums || []).map((num) => almGet(clave + "#" + num).then((v) => [num, v])));
+    for (const [num, v] of piezas) { if (!v) continue; if (v.cats && !S.tele.has(num)) S.tele.set(num, v.cats); if (v.track && !S.tracks.has(num)) S.tracks.set(num, v.track); }
+    return;
+  }
   try {
-    const d = JSON.parse(localStorage.getItem(cacheKey("tele")) || "null"); if (!d) return;
+    const d = leerViejo(clave); if (!d) return;
     for (const [k, v] of Object.entries(d.tele || {})) if (!S.tele.has(+k)) S.tele.set(+k, v);
     for (const [k, v] of Object.entries(d.tracks || {})) if (!S.tracks.has(+k)) S.tracks.set(+k, v);
+    for (const k of Object.keys(d.tele || {})) teleSucio.add(+k);
   } catch (e) {}
 }
 function requestTele(num, kind, silent) {
@@ -1912,7 +2079,7 @@ S.tui = { node: null, tab: "summary", metric: null, range: 6 * 3600e3 };
 function viewTele(m) {
   const sel = el("select", { class: "inp", "aria-label": "Nodo del que se ve la telemetría", onchange: (e) => { S.tui.node = +e.target.value; S.tui.tab = "detail"; S.tui.metric = null; renderTeleBody(); syncTabs(); } });
   const fillSel = () => {
-    const nums = [...new Set([S.me, ...S.tele.keys()])].filter(Boolean).sort((a, b) => (a === S.me ? -1 : b === S.me ? 1 : nodeName(S.nodes.get(a)).localeCompare(nodeName(S.nodes.get(b)))));
+    const nums = [...new Set([S.me, ...S.tele.keys()])].filter(Boolean).sort((a, b) => (a === S.me ? -1 : b === S.me ? 1 : ORDEN.compare(nodeName(S.nodes.get(a)), nodeName(S.nodes.get(b)))));
     sel.replaceChildren(...nums.map((n) => el("option", { value: n, selected: n === (S.tui.node || S.me) }, nodeName(S.nodes.get(n)) + (n === S.me ? " (vos)" : ""))));
   };
   fillSel();
@@ -2139,7 +2306,7 @@ function nodeColor(n) {
 }
 const LEGENDS = {
   ident: null,
-  estado: [["#22c55e", "Activo"], ["#facc15", "Batería baja / señal débil"], ["#ef4444", "Alerta de pánico o nodo caído (parpadea)"], ["#94a3b8", "Sin datos"]],
+  estado: [["#22c55e", "Activo"], ["#facc15", "Batería baja / señal débil"], ["#ef4444", "Alerta de pánico o nodo caído (parpadea si es de radio)"], ["#94a3b8", "Sin datos"]],
   snr: [["#16a34a", "≥ 5 dB"], ["#84cc16", "0 a 5"], ["#f59e0b", "-5 a 0"], ["#f97316", "-10 a -5"], ["#dc2626", "< -10"], ["#94a3b8", "sin dato"]],
   battery: [["#2563eb", "Alimentado"], ["#16a34a", "> 50 %"], ["#f59e0b", "20–50 %"], ["#dc2626", "< 20 %"], ["#94a3b8", "sin dato"]],
   age: [["#16a34a", "< 15 min"], ["#f59e0b", "< 2 h"], ["#f97316", "< 24 h"], ["#94a3b8", "más viejo"]],
@@ -2357,7 +2524,9 @@ function updCoord(sx, sy) {
   const p = unproj(c, sx, sy), mp = mePos();
   box.textContent = `${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}` + (mp ? ` · ${fmtDist(hav(mp.lat, mp.lon, p.lat, p.lon))} de tu nodo` : "");
 }
-function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+/* Los colores del tema se leen una vez por dibujo: leerlos en cada nodo era la mitad del tiempo del mapa con miles de nodos */
+const cssMemo = new Map();
+function css(v) { let x = cssMemo.get(v); if (x === undefined) { x = getComputedStyle(document.documentElement).getPropertyValue(v).trim(); cssMemo.set(v, x); } return x; }
 let mapRaf = 0;
 const drawMapSoon = () => { if (!mapRaf) mapRaf = requestAnimationFrame(() => { mapRaf = 0; drawMap(); }); };
 
@@ -2533,15 +2702,25 @@ async function downloadArea() {
 }
 
 /* dibujo */
+/* Recorta un segmento al rectángulo visible (con margen). Devuelve null si no lo cruza. */
+function recortarLinea(x0, y0, x1, y1, W, H, m = 20) {
+  let t0 = 0, t1 = 1; const dx = x1 - x0, dy = y1 - y0;
+  for (const [p, q] of [[-dx, x0 + m], [dx, W + m - x0], [-dy, y0 + m], [dy, H + m - y0]]) {
+    if (p === 0) { if (q < 0) return null; continue; }
+    const r = q / p; if (p < 0) { if (r > t1) return null; if (r > t0) t0 = r; } else { if (r < t0) return null; if (r < t1) t1 = r; }
+  }
+  return [x0 + t0 * dx, y0 + t0 * dy, x0 + t1 * dx, y0 + t1 * dy];
+}
 function drawMap() {
-  const c = $("#mapc"); if (!c) return;
+  const c = $("#mapc"); if (!c) return; cssMemo.clear();
   const dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
   if (!W || !H) return;
   if (c.width !== W * dpr || c.height !== H * dpr) { c.width = W * dpr; c.height = H * dpr; }
   if (!S.map.fitted && S.nodes.size) fitMap();
   const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const L = S.map.L, o = origin(), mpp = S.map.mpp, now = Date.now() / 1000;
-  const P = (lat, lon) => { const p = proj(lat, lon, o); return scr(c, p.x, p.y); };
+  const cx = S.map.cx, cy = S.map.cy, W2 = W / 2, H2 = H / 2; /* igual que scr(), sin volver a medir el lienzo en cada punto */
+  const P = (lat, lon) => { const p = proj(lat, lon, o); return { sx: W2 + (p.x - cx) / mpp, sy: H2 - (p.y - cy) / mpp }; };
   g.fillStyle = css("--mapbg"); g.fillRect(0, 0, W, H);
   // 1) base: mapa en línea (guardado para uso sin conexión), teselas e imágenes
   if (L.base && BASES[L.base]) drawOnlineLayer(g, c, o, BASES[L.base]);
@@ -2585,13 +2764,22 @@ function drawMap() {
   }
   // 7) vecinos reportados y enlaces directos
   if (L.neigh) {
-    g.strokeStyle = "#6366f1"; g.setLineDash([6, 5]); g.lineWidth = 1.5; g.globalAlpha = 0.7;
-    for (const [id, list] of S.neigh) { const a = S.nodes.get(id); if (!a || !a.pos) continue; const sa = P(a.pos.lat, a.pos.lon); for (const nb of list) { const b = S.nodes.get(nb.id); if (!b || !b.pos) continue; const sb = P(b.pos.lat, b.pos.lon); g.beginPath(); g.moveTo(sa.sx, sa.sy); g.lineTo(sb.sx, sb.sy); g.stroke(); } }
-    g.setLineDash([]); g.globalAlpha = 1;
+    g.strokeStyle = "#6366f1"; g.setLineDash([6, 5]); g.lineWidth = 1.5; g.globalAlpha = 0.7; const vecL = new Path2D(); /* todas de una vez y solo lo visible */
+    for (const [id, list] of S.neigh) { const a = S.nodes.get(id); if (!a || !a.pos) continue; const sa = P(a.pos.lat, a.pos.lon); for (const nb of list) { const b = S.nodes.get(nb.id); if (!b || !b.pos) continue; const sb = P(b.pos.lat, b.pos.lon), r = recortarLinea(sa.sx, sa.sy, sb.sx, sb.sy, W, H); if (r) { vecL.moveTo(r[0], r[1]); vecL.lineTo(r[2], r[3]); } } }
+    g.stroke(vecL); g.setLineDash([]); g.globalAlpha = 1;
   }
   if (L.links && me) {
+    /* Se juntan por color y se descartan las que no cruzan la pantalla: con muchos enlaces, una
+       línea larguísima fuera de la vista podía tardar segundos en dibujarse. */
+    const porSnr = new Map();
+    for (const n of S.nodes.values()) {
+      if (n.num === S.me || !n.pos || n.hops !== 0) continue; if (L.activeOnly && now - (n.lastHeard || 0) > 7200) continue;
+      const s = P(n.pos.lat, n.pos.lon), r = recortarLinea(me.sx, me.sy, s.sx, s.sy, W, H); if (!r) continue;
+      const col = snrColor(n.snr); let pth = porSnr.get(col); if (!pth) porSnr.set(col, (pth = new Path2D()));
+      pth.moveTo(r[0], r[1]); pth.lineTo(r[2], r[3]);
+    }
     g.lineWidth = 2; g.globalAlpha = 0.8;
-    for (const n of S.nodes.values()) { if (n.num === S.me || !n.pos || n.hops !== 0) continue; if (L.activeOnly && now - (n.lastHeard || 0) > 7200) continue; const s = P(n.pos.lat, n.pos.lon); g.strokeStyle = snrColor(n.snr); g.beginPath(); g.moveTo(me.sx, me.sy); g.lineTo(s.sx, s.sy); g.stroke(); }
+    for (const [col, pth] of porSnr) { g.strokeStyle = col; g.stroke(pth); }
     g.globalAlpha = 1;
   }
   // 8) waypoints
@@ -2605,28 +2793,68 @@ function drawMap() {
   }
   // 9) nodos
   let any = 0, blink = false;
+  /* Los símbolos y los nombres se dibujan al final, todos juntos (cambiar la letra en cada nodo
+     era lo más lento del mapa con miles de nodos). Si hay muchos nodos en pantalla, los nombres
+     se encimaban y no se leía ninguno: se escribe uno por lugar, primero el tuyo, el elegido y
+     los favoritos. Acercando el mapa aparecen todos. */
+  const simbolos = [], etiquetas = [], ph = Math.floor(Date.now() / 600) % 2 === 0, tinta = css("--ink"), acento = css("--acc");
+  const porColor = new Map(), bordes = new Path2D(), anillos = new Path2D(), especiales = [];
+  /* con miles de nodos en pantalla los puntos se achican y van sin borde: se distinguen mejor y se dibujan más rápido */
+  const muchos = (S.map.visPrev || 0) > 2500, rPunto = muchos ? 4 : 7, conBorde = !muchos;
   if (L.nodes) for (const n of S.nodes.values()) {
     if (!n.pos) continue;
     if (L.activeOnly && n.num !== S.me && now - (n.lastHeard || 0) > 7200) continue;
     const s = P(n.pos.lat, n.pos.lon);
     if (s.sx < -20 || s.sy < -20 || s.sx > W + 20 || s.sy > H + 20) continue;
-    const isMe = n.num === S.me; any++;
-    const stt = L.color === "estado" ? nodeStatus(n) : null, blinkOn = stt && stt.blink, ph = Math.floor(Date.now() / 600) % 2 === 0;
+    const isMe = n.num === S.me, fav = isFav(n), sel = S.map.sel === n.num; any++;
+    const stt = L.color === "estado" ? nodeStatus(n) : null, blinkOn = stt && stt.blink;
     if (blinkOn) { blink = true; const r0 = (isMe ? 9 : 7); g.beginPath(); g.arc(s.sx, s.sy, r0 + (ph ? 9 : 4), 0, 7); g.fillStyle = "rgba(239,68,68," + (ph ? 0.28 : 0.12) + ")"; g.fill(); }
-    g.beginPath(); g.arc(s.sx, s.sy, isMe ? 9 : 7, 0, 7); g.fillStyle = blinkOn && !ph ? "#7f1d1d" : isMe && !stt ? css("--acc") : nodeColor(n); g.fill();
-    g.lineWidth = S.map.sel === n.num ? 3 : 1.5; g.strokeStyle = S.map.sel === n.num ? css("--ink") : "#fff"; g.stroke();
-    if (stt && stt.k !== "ok") { g.fillStyle = stt.k === "warn" ? "#000" : "#fff"; g.font = "bold 10px system-ui,sans-serif"; g.textAlign = "center"; g.fillText(stt.k === "down" ? "×" : stt.k === "panic" ? "!" : stt.k === "warn" ? "▲" : "?", s.sx, s.sy + 3.5); g.textAlign = "left"; }
-    if (isFav(n)) { g.beginPath(); g.arc(s.sx, s.sy, (isMe ? 9 : 7) + 3.5, 0, 7); g.lineWidth = 2.5; g.strokeStyle = "#f5b301"; g.stroke(); }
-    if (L.labels) { g.fillStyle = css("--ink"); g.font = "11px system-ui,sans-serif"; g.textAlign = "left"; g.fillText((isFav(n) ? "★ " : "") + nodeShort(n), s.sx + 12, s.sy + 4); }
+    if (!isMe && !sel && !blinkOn) { /* el caso común se junta por color y se pinta de una vez al final */
+      const col = nodeColor(n); let pth = porColor.get(col); if (!pth) porColor.set(col, (pth = new Path2D()));
+      pth.moveTo(s.sx + rPunto, s.sy); pth.arc(s.sx, s.sy, rPunto, 0, 7); if (conBorde) { bordes.moveTo(s.sx + rPunto, s.sy); bordes.arc(s.sx, s.sy, rPunto, 0, 7); }
+    } else {
+      especiales.push([s.sx, s.sy, isMe ? 9 : 7, blinkOn && !ph ? "#7f1d1d" : isMe && !stt ? acento : nodeColor(n), sel]);
+    }
+    if (stt && stt.k !== "ok") simbolos.push(stt.k, s.sx, s.sy);
+    if (fav) { anillos.moveTo(s.sx + (isMe ? 9 : 7) + 3.5, s.sy); anillos.arc(s.sx, s.sy, (isMe ? 9 : 7) + 3.5, 0, 7); }
+    if (L.labels) etiquetas.push({ n, x: s.sx, y: s.sy, pri: isMe || sel ? 0 : fav ? 1 : 2, fav });
     S.map.hit.push({ key: n.num, sx: s.sx, sy: s.sy });
   }
-  S.map.blink = blink; mapStatChips();
+  for (const [col, pth] of porColor) { g.fillStyle = col; g.fill(pth); }
+  if (porColor.size) { g.lineWidth = 1.5; g.strokeStyle = "#fff"; g.stroke(bordes); }
+  for (const [x, y, r, col, sel] of especiales) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = col; g.fill(); g.lineWidth = sel ? 3 : 1.5; g.strokeStyle = sel ? tinta : "#fff"; g.stroke(); } /* el tuyo, el elegido y los que parpadean, arriba de todo */
+  g.lineWidth = 2.5; g.strokeStyle = "#f5b301"; g.stroke(anillos);
+  if (simbolos.length) { /* dibujados con trazos, todos los de un tipo de una sola vez: escribirlos como letras, uno por uno, era lo más lento del mapa */
+    const cruz = new Path2D(), excl = new Path2D(), tri = new Path2D(), otros = [];
+    for (let i = 0; i < simbolos.length; i += 3) {
+      const k = simbolos[i], x = simbolos[i + 1], y = simbolos[i + 2];
+      if (k === "down") { cruz.moveTo(x - 3, y - 3); cruz.lineTo(x + 3, y + 3); cruz.moveTo(x + 3, y - 3); cruz.lineTo(x - 3, y + 3); }
+      else if (k === "panic") { excl.moveTo(x, y - 4); excl.lineTo(x, y + 1); excl.moveTo(x, y + 3); excl.lineTo(x, y + 4); }
+      else if (k === "warn") { tri.moveTo(x, y - 4); tri.lineTo(x + 4, y + 3); tri.lineTo(x - 4, y + 3); tri.closePath(); }
+      else otros.push(x, y);
+    }
+    g.lineCap = "round"; g.lineWidth = 1.8; g.strokeStyle = "#fff"; g.stroke(cruz); g.stroke(excl); g.lineCap = "butt";
+    g.fillStyle = "#000"; g.fill(tri);
+    if (otros.length) { g.font = "bold 10px system-ui,sans-serif"; g.textAlign = "center"; g.fillStyle = "#fff"; for (let i = 0; i < otros.length; i += 2) g.fillText("?", otros[i], otros[i + 1] + 3.5); }
+  }
+  if (etiquetas.length) {
+    g.font = "11px system-ui,sans-serif"; g.textAlign = "left"; g.fillStyle = tinta;
+    const ralear = etiquetas.length > 150, ocup = new Set();
+    if (ralear) etiquetas.sort((a, b) => a.pri - b.pri);
+    for (const e of etiquetas) {
+      if (ralear && e.pri > 0) { const k = Math.floor((e.x + 12) / 64) + ":" + Math.floor(e.y / 16); if (ocup.has(k)) continue; ocup.add(k); }
+      g.fillText((e.fav ? "★ " : "") + nodeShort(e.n), e.x + 12, e.y + 4);
+    }
+  }
+  S.map.visPrev = any; S.map.blink = blink; mapStatChips();
   if (!any && L.nodes) { g.fillStyle = css("--mut"); g.font = "14px system-ui,sans-serif"; g.textAlign = "left"; g.fillText("Ningún nodo informó su posición todavía.", 20, 30); }
   showInfo(); { const ib = $("#mapinfo"); if (ib) [...ib.childNodes].forEach((x) => x.nodeType === 3 && /^(null|undefined)+$/.test(x.textContent) && x.remove()); } showLegend(); mapAttribution();
 }
+let mapStatFirma = "";
 function mapStatChips() {
   const box = $("#mapstat"); if (!box) return; const c = { ok: 0, warn: 0, down: 0, panic: 0 };
   for (const n of S.nodes.values()) { const k = nodeStatus(n).k; if (c[k] != null) c[k]++; }
+  const f = c.ok + "," + c.warn + "," + c.down + "," + c.panic; if (f === mapStatFirma && box.firstChild) return; mapStatFirma = f; /* mover el mapa no cambia la cuenta: no se rearma */
   box.replaceChildren(el("span", { class: "sc", title: "Activos" }, el("i", { class: "stdot stok" }), c.ok + (c.ok === 1 ? " activo" : " activos")), el("span", { class: "sc", title: "Batería baja o señal débil" }, el("i", { class: "stdot stwarn" }), c.warn + " en atención"), el("span", { class: "sc", title: "Nodos caídos" }, el("i", { class: "stdot stdown" + (c.down ? " blink" : "") }), c.down + (c.down === 1 ? " caído" : " caídos")), el("span", { class: "sc", title: "Alertas de pánico sin atender" }, el("i", { class: "stdot stpanic" + (c.panic ? " blink" : "") }), c.panic + (c.panic === 1 ? " alerta" : " alertas")));
 }
 function showLegend() {
@@ -2966,15 +3194,21 @@ function topoModel() {
     else if (o.traceHops != null) { o.cls = "relayed"; o.ring = Math.max(2, o.traceHops); }
     else if (n.viaMqtt) o.cls = "mqtt";
   }
+  /* índice de enlaces por nodo: antes cada nodo recorría todos los enlaces (con miles de nodos
+     por MQTT eran millones de pasos y la pantalla tardaba casi un segundo en abrir) */
+  const porNodo = new Map();
+  for (const e of edges.values()) for (const x of [e.a, e.b]) { let l = porNodo.get(x); if (!l) porNodo.set(x, (l = [])); l.push(e); }
   for (const o of nodes.values()) { /* los que solo aparecen en la tabla de vecinos de otro nodo */
     if (o.cls !== "unk" || o.num === me) continue;
-    for (const e of edges.values()) { if (e.a !== o.num && e.b !== o.num) continue; const other = nodes.get(e.a === o.num ? e.b : e.a); if (other && other.ring != null) { o.cls = "reported"; o.ring = other.ring + 1; o.parent = other.num; break; } }
+    for (const e of porNodo.get(o.num) || []) { const other = nodes.get(e.a === o.num ? e.b : e.a); if (other && other.ring != null) { o.cls = "reported"; o.ring = other.ring + 1; o.parent = other.num; break; } }
   }
+  const directosPorByte = new Map(); /* el firmware solo informa el último byte del repetidor */
+  for (const x of nodes.values()) if (x.cls === "direct") { const k = x.num & 255; let l = directosPorByte.get(k); if (!l) directosPorByte.set(k, (l = [])); l.push(x); }
   for (const o of nodes.values()) {
     if (o.cls !== "relayed" || !c.infer) continue; const n = o.n;
-    const hasTr = [...edges.values()].some((e) => (e.a === o.num || e.b === o.num) && e.ev.some((x) => x.kind === "trace"));
+    const hasTr = (porNodo.get(o.num) || []).some((e) => e.ev.some((x) => x.kind === "trace"));
     if (hasTr) continue;
-    const cands = n.relay ? [...nodes.values()].filter((x) => x.cls === "direct" && x.num !== o.num && (x.num & 255) === n.relay) : [];
+    const cands = n.relay ? (directosPorByte.get(n.relay) || []).filter((x) => x.num !== o.num) : [];
     const t = n.relayT || (n.lastHeard || 0) * 1000;
     if (cands.length === 1) { o.parent = cands[0].num; o.relayCand = cands[0].num; ev(cands[0].num, o.num, { kind: "infer", hops: n.hops, t, by: me, relay: n.relay, cand: 1 }); }
     else { o.relayAmb = cands.length; ev(me, o.num, { kind: "infer", hops: n.hops, t, by: me, relay: n.relay, cand: cands.length, unknown: true }); }
@@ -2984,6 +3218,7 @@ function topoModel() {
   }
   return { nodes, edges, cut };
 }
+const TOPO_BANDA_MAX = 180;
 function topoLayout(M) {
   const pos = new Map(), R0 = 130, dR = 105, byRing = new Map(), SEP = 86, kids = new Map();
   pos.set(S.me, { x: 0, y: 0, a: 0, r: 0 });
@@ -3001,8 +3236,12 @@ function topoLayout(M) {
   }
   const bands = []; let y = maxR + 130;
   for (const [cls, title] of [["mqtt", "Llegan por Internet (MQTT): sin enlace de radio verificado"], ["unk", "Sin datos suficientes para ubicarlos"]]) {
-    const list = [...M.nodes.values()].filter((o) => o.cls === cls); if (!list.length) continue;
-    const per = 9; bands.push({ title, y: y - 44, rows: Math.ceil(list.length / per), cls });
+    let list = [...M.nodes.values()].filter((o) => o.cls === cls); if (!list.length) continue;
+    /* Estos nodos no tienen enlaces que dibujar: con miles, el diagrama se volvía lento y no se
+       leía. Se muestran los escuchados más recientemente; el resto queda en la lista de Nodos. */
+    let ocultos = 0;
+    if (list.length > TOPO_BANDA_MAX) { list.sort((a, b) => (b.n.lastHeard || 0) - (a.n.lastHeard || 0)); ocultos = list.length - TOPO_BANDA_MAX; for (const o of list.slice(TOPO_BANDA_MAX)) o.oculto = true; list = list.slice(0, TOPO_BANDA_MAX); }
+    const per = 9; bands.push({ title: title + (ocultos ? ` · se muestran los ${TOPO_BANDA_MAX} más recientes, ${ocultos} más en la pantalla Nodos` : ""), y: y - 44, rows: Math.ceil(list.length / per), cls });
     list.forEach((o, i) => pos.set(o.num, { x: ((i % per) - (Math.min(per, list.length) - 1) / 2) * 92, y: y + Math.floor(i / per) * 84, a: 0, r: 0 }));
     y += Math.ceil(list.length / per) * 84 + 90;
   }
@@ -3042,26 +3281,33 @@ let tpTimer = 0; const topoSoon = () => { clearTimeout(tpTimer); tpTimer = setTi
 function topoMarcar() {
   const g = $("#tpg"); if (!g) return; const sel = S.topo.sel;
   for (const n of g.querySelectorAll(".tpn.sel")) n.classList.remove("sel");
+  for (const r of g.querySelectorAll(".tpselring")) r.remove(); /* el anillo de elegido se agrega solo al nodo elegido */
   for (const e of g.querySelectorAll(".tpe-g.sel")) e.classList.remove("sel");
   if (!sel) return;
   const q = sel.type === "node" ? '.tpn[data-id="' + sel.id + '"]' : '.tpe-g[data-k="' + CSS.escape(String(sel.id)) + '"]';
   const el2 = g.querySelector(q); if (el2) el2.classList.add("sel");
+  if (el2 && sel.type === "node") el2.prepend(sv("circle", { r: (sel.id === S.me ? 22 : 17) + 7, class: "tpselring" }));
 }
 function topoDraw() {
   const g = $("#tpg"); if (!g) return; const T = S.topo, M = topoModel(), L = topoLayout(M); T.model = M; T.lay = L;
   const kids = [];
   for (const r of L.rings) kids.push(sv("circle", { class: "tpring", r: r.rad }), sv("text", { class: "tprl", x: 0, y: -r.rad - 5, "text-anchor": "middle" }, r.r === 1 ? "Directos (0 saltos)" : r.r - 1 + (r.r === 2 ? " salto" : " saltos")));
   for (const b of L.bands) kids.push(sv("rect", { class: "tpband", x: -470, y: b.y, width: 940, height: b.rows * 84 + 52, rx: 14 }), sv("text", { class: "tprl", x: -456, y: b.y + 20 }, b.title));
-  const pos = L.pos, sorted = [...M.edges.values()].sort((a, b) => EV_RANK[evOf(a)[0].kind] - EV_RANK[evOf(b)[0].kind]);
+  /* la medición principal de cada enlace se calcula una sola vez (antes se recalculaba en cada
+     comparación del orden, miles de veces con redes grandes) */
+  const pos = L.pos, tope = new Map(); for (const e of M.edges.values()) tope.set(e, evOf(e)[0]);
+  const sorted = [...M.edges.values()].sort((a, b) => EV_RANK[tope.get(a).kind] - EV_RANK[tope.get(b).kind]);
+  /* con muchos enlaces las etiquetas se pisan y no se leen: se ven en el panel al elegir el enlace */
+  const conEtiquetas = sorted.length <= 250, ahoraT = Date.now();
   for (const e of sorted) {
-    const pa = pos.get(e.a), pb = pos.get(e.b); if (!pa || !pb) continue; const top = evOf(e)[0], age = (Date.now() - top.t) / 1000;
+    const pa = pos.get(e.a), pb = pos.get(e.b); if (!pa || !pb) continue; const top = tope.get(e), age = (ahoraT - top.t) / 1000;
     const col = top.kind === "direct" ? snrColor(top.snr) : null, sl = T.sel && T.sel.type === "edge" && T.sel.id === e.k;
     const cls = "tpe " + top.kind + (age > 21600 ? " old" : "");
     kids.push(sv("g", { class: "tpe-g" + (sl ? " sel" : ""), "data-k": e.k, onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "edge", id: e.k }; topoMarcar(); topoPanel(); } },
       sv("line", { class: cls, x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, style: col ? "stroke:" + col : null }),
       sv("line", { class: "tpe-hit", x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y }),
-      top.kind === "infer" ? sv("text", { class: "tpelb", x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, "inferido") : null,
-      top.kind !== "infer" ? sv("text", { class: "tpelb" + (top.kind === "direct" ? "" : " alseleccionar"), x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, top.snr != null ? top.snr.toFixed(1) + " dB" : "") : null));
+      conEtiquetas && top.kind === "infer" ? sv("text", { class: "tpelb", x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, "inferido") : null,
+      conEtiquetas && top.kind !== "infer" ? sv("text", { class: "tpelb" + (top.kind === "direct" ? "" : " alseleccionar"), x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 - 4, "text-anchor": "middle" }, top.snr != null ? top.snr.toFixed(1) + " dB" : "") : null));
   }
   /* Con muchísimos nodos los nombres largos se pisan y no se leen; además son la mitad
      del dibujo. Pasados los 120 se muestran solo al elegir el nodo, en el panel de al lado. */
@@ -3071,10 +3317,13 @@ function topoDraw() {
     const fill = `hsl(${(o.num * 47) % 360} 55% 42%)`, ring = ST_COL[st.k];
     const shape = o.cls === "relayed" || o.cls === "reported" ? sv("rect", { x: -rr, y: -rr, width: rr * 2, height: rr * 2, rx: 6, fill, stroke: ring, "stroke-width": 3 }) : o.cls === "mqtt" ? sv("rect", { x: -rr, y: -rr, width: rr * 2, height: rr * 2, rx: 6, fill, stroke: ring, "stroke-width": 3, "stroke-dasharray": "4 3" }) : sv("circle", { r: rr, fill, stroke: ring, "stroke-width": 3, "stroke-dasharray": o.cls === "unk" ? "2 3" : null });
     kids.push(sv("g", { class: "tpn" + (sl ? " sel" : "") + (st.blink ? " blink" : ""), "data-id": o.num, transform: `translate(${p.x} ${p.y})`, onclick: (ev) => { ev.stopPropagation(); T.sel = { type: "node", id: o.num }; topoMarcar(); topoPanel(); } },
-      sv("circle", { r: rr + 7, class: "tpselring" }), shape, sv("text", { class: "tpsn", "text-anchor": "middle", y: 3.5 }, nodeShort(n).slice(0, 4)), conNombres || me || sl ? sv("text", { class: "tpln", "text-anchor": "middle", y: rr + 14 }, nodeName(n).slice(0, 22) + (me ? " (vos)" : "")) : null));
+      sl ? sv("circle", { r: rr + 7, class: "tpselring" }) : null, shape, sv("text", { class: "tpsn", "text-anchor": "middle", y: 3.5 }, nodeShort(n).slice(0, 4)), conNombres || me || sl ? sv("text", { class: "tpln", "text-anchor": "middle", y: rr + 14 }, nodeName(n).slice(0, 22) + (me ? " (vos)" : "")) : null));
   }
+  /* el tamaño del recuadro se lee antes de cambiar el dibujo: leerlo después obligaba al
+     navegador a acomodar miles de elementos en el acto, una vez de más */
+  const hostW = T.host ? T.host.clientWidth : 0, hostH = T.host ? T.host.clientHeight : 0;
   g.replaceChildren(...kids);
-  if (!T.fitted) { const host = T.host, W = host.clientWidth || 800, H = host.clientHeight || 600; let minX = -150, maxX = 150, minY = -150, maxY = 150; for (const p of pos.values()) { minX = Math.min(minX, p.x - 60); maxX = Math.max(maxX, p.x + 60); minY = Math.min(minY, p.y - 60); maxY = Math.max(maxY, p.y + 60); } const k = Math.min(1.2, Math.min(W / (maxX - minX), H / (maxY - minY))); T.k = k; T.tx = W / 2 - ((minX + maxX) / 2) * k; T.ty = H / 2 - ((minY + maxY) / 2) * k; T.fitted = true; }
+  if (!T.fitted) { const host = T.host, W = hostW || 800, H = hostH || 600; let minX = -150, maxX = 150, minY = -150, maxY = 150; for (const p of pos.values()) { minX = Math.min(minX, p.x - 60); maxX = Math.max(maxX, p.x + 60); minY = Math.min(minY, p.y - 60); maxY = Math.max(maxY, p.y + 60); } const k = Math.min(1.2, Math.min(W / (maxX - minX), H / (maxY - minY))); T.k = k; T.tx = W / 2 - ((minX + maxX) / 2) * k; T.ty = H / 2 - ((minY + maxY) / 2) * k; T.fitted = true; }
   T.apply();
   const cnt = (cl) => [...M.nodes.values()].filter((o) => o.cls === cl).length, ne = [...M.edges.values()], obs = ne.filter((e) => e.ev.some((x) => x.kind !== "infer")).length, inf = ne.length - obs;
   const sm = $("#tpsum"); if (sm) sm.textContent = `Directos ${cnt("direct")} · con repetidores ${cnt("relayed") + cnt("reported")} · solo MQTT ${cnt("mqtt")} · sin datos ${cnt("unk")} · enlaces observados ${obs} · inferidos ${inf}`;
@@ -3158,7 +3407,7 @@ function gdEntries() {
   const q = gdF.q.trim().toLowerCase(); if (q) list = list.filter((x) => (x.node + " " + x.detail + " " + x.label + " " + x.chan).toLowerCase().includes(q));
   list.sort((x, y) => x.t - y.t); if (gdF.desc) list.reverse(); return list;
 }
-function gdNodeNames() { const set = new Set(); for (const e of S.events) if (e.name) set.add(e.name); for (const m of S.msgs) set.add(m.mine ? "Este nodo" : m.fn || nameOf(m.from)); return [...set].sort((a, b) => a.localeCompare(b)); }
+function gdNodeNames() { const set = new Set(); for (const e of S.events) if (e.name) set.add(e.name); for (const m of S.msgs) set.add(m.mine ? "Este nodo" : m.fn || nameOf(m.from)); return [...set].sort(ORDEN.compare); }
 let gdUpd = null;
 function updGuardia() { if (gdUpd) gdUpd(); }
 /* ───────────────────────── parte de situación ─────────────────────────
@@ -3256,7 +3505,17 @@ function viewGuardia(m) {
     [["8h", "Últimas 8 horas"], ["12h", "Últimas 12 horas"], ["24h", "Últimas 24 horas"], ["today", "Hoy (desde las 00:00)"], ["yesterday", "Ayer"], ["custom", "Personalizado (desde / hasta)"]].map(([v, l]) => el("option", { value: v, selected: gdF.preset === v }, l)));
   const sync = () => { const [a, b] = gdRange(); fromIn.value = toLocalInput(a); toIn.value = toLocalInput(b); preset.value = gdF.preset; };
   const ck = (label, get, set) => el("label", { class: "ck" }, el("input", { type: "checkbox", checked: get(), onchange: (e) => { set(e.target.checked); upd(); } }), el("span", {}, label));
-  const nodeSel = el("select", { class: "inp", "aria-label": "Filtrar por nodo", onchange: (e) => { gdF.node = e.target.value; upd(); } }, [el("option", { value: "" }, "Todos los nodos"), ...gdNodeNames().map((n) => el("option", { value: n, selected: gdF.node === n }, n))]);
+  /* Con pocos nodos, una lista desplegable. Con miles (típico con MQTT) la lista tenía decenas de
+     miles de opciones y la pantalla tardaba en abrir: pasa a ser un campo con sugerencias. */
+  const nombres = gdNodeNames();
+  const nodeSel = nombres.length <= 250
+    ? el("select", { class: "inp", "aria-label": "Filtrar por nodo", onchange: (e) => { gdF.node = e.target.value; upd(); } }, [el("option", { value: "" }, "Todos los nodos"), ...nombres.map((n) => el("option", { value: n, selected: gdF.node === n }, n))])
+    : (() => {
+      const dl = el("datalist", { id: "gdnodos" });
+      const sug = (q) => { q = (q || "").toLowerCase(); dl.replaceChildren(...nombres.filter((n) => !q || n.toLowerCase().includes(q)).slice(0, 60).map((n) => el("option", { value: n }))); };
+      const inp = el("input", { class: "inp", type: "search", list: "gdnodos", value: gdF.node || "", placeholder: "Todos los nodos (" + nombres.length + ")", "aria-label": "Filtrar por nodo: escribí parte del nombre", oninput: (e) => sug(e.target.value), onchange: (e) => { const v = e.target.value.trim(); gdF.node = v && nombres.includes(v) ? v : v ? (nombres.find((n) => n.toLowerCase() === v.toLowerCase()) || v) : ""; upd(); } });
+      sug(gdF.node); return el("span", { class: "gdnodo" }, inp, dl);
+    })();
   const cnt = el("div", { class: "gdcount" }), holder = el("div", { class: "tblwrap gdtbl" });
   const unit = el("input", { class: "inp", value: meta.unit, placeholder: "Ej.: Base central / Puesto", onchange: (e) => gdSave({ unit: e.target.value }) });
   const chief = el("input", { class: "inp", value: meta.chief, placeholder: "Jefe de guardia / operador", onchange: (e) => gdSave({ chief: e.target.value }) });
@@ -3726,7 +3985,7 @@ function viewOps(body) {
       secH("Apariencia"),
       ...th.map(([k, t, d]) => actRow(t, d, el("button", { class: "btn " + (cur === k ? "" : "ghost"), onclick: () => { setTheme(k); renderMain(); } }, cur === k ? "✓ En uso" : "Usar"))),
       secH("Semáforo de nodos (mapa y lista)"),
-      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Cómo se pinta cada nodo"), el("small", {}, "🟢 verde: activo · 🟡 amarillo: batería baja o señal débil · 🔴 rojo intermitente: alerta de pánico sin atender o nodo caído · ⚪ gris: todavía sin datos."))),
+      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Cómo se pinta cada nodo"), el("small", {}, "🟢 verde: activo · 🟡 amarillo: batería baja o señal débil · 🔴 rojo intermitente: alerta de pánico sin atender o nodo de radio caído (los que llegan por Internet quedan en rojo fijo) · ⚪ gris: todavía sin datos."))),
       actRow("Nodo caído después de", "Si no se escucha al nodo durante este tiempo, pasa a rojo y se anota en el registro.", num("downMin", 5, 1440, 5, "minutos")),
       actRow("Batería baja desde", "Por debajo de este porcentaje el nodo pasa a amarillo.", num("lowBat", 5, 60, 1, "%")),
       actRow("Señal débil desde", "Si el SNR del último paquete es igual o menor, el nodo pasa a amarillo.", num("weakSnr", -25, 5, 1, "dB")),
@@ -3734,7 +3993,7 @@ function viewOps(body) {
       el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Cómo se reconoce una alerta"), el("small", {}, "Es todo mensaje recibido que empieza con 🚨, SOS, EMERGENCIA, PÁNICO o ALERTA (el botón EMERGENCIAS de este portal arma el mensaje así). El tono se elige en Sonidos y suena aunque esté el silencio nocturno.")))))
 }
 /* ───────────────────────── Rendimiento y limpieza ───────────────────────── */
-const fmtKB = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB");
+const fmtKB = (b) => (b > 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB");
 function lsUse() { /* cuánto ocupa el portal en el almacenamiento del navegador, por tipo de dato */
   const grupos = { "Mensajes guardados": /:msgs$/, "Libreta de nodos": /:nodes$/, "Telemetría": /:tele$/, "Registro de eventos y alertas": /:(events|alerts)$/, "Rutas (traceroute)": /:traces$/, "Sonidos propios": /:sndfiles$/ };
   const out = {}; let total = 0, otros = 0;
@@ -3759,6 +4018,7 @@ function medirFrames(ms = 3000) { /* mide cuánto tarda el navegador en dibujar 
 let perfLast = null;
 async function perfMedir() {
   const t0 = performance.now(), fr = await medirFrames(3000), tiles = await tileUse(), ls = lsUse();
+  let est = null; try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) {}
   let teleM = 0; for (const cats of S.tele.values()) for (const c of Object.values(cats)) teleM += (c.hist || []).length;
   const nav = performance.getEntriesByType("navigation")[0];
   perfLast = {
@@ -3768,6 +4028,7 @@ async function perfMedir() {
     pantalla: S.view, nodos: S.nodes.size, porMqtt: [...S.nodes.values()].filter((n) => n.viaMqtt).length,
     mensajes: S.msgs.length, muestrasTele: teleM, eventos: S.events.length, rutas: S.traces.length,
     almacenamiento: ls, mosaicosMapa: tiles,
+    almacenGrande: ALM.ok ? { usado: est ? est.usage || 0 : null, cuota: est ? est.quota || 0 : null } : null,
     mqtt: S.mq.srv ? S.mq.srv.filter((x) => x && x.st === "on").length + "/" + S.mq.cfg.servers.filter((x) => x.on).length : "0/0",
     conexion: S.demo ? "modo demo" : S.transport || "sin nodo",
     navegador: navigator.userAgent, nucleos: navigator.hardwareConcurrency || "?", memoriaGB: navigator.deviceMemory || "?",
@@ -3784,7 +4045,8 @@ function perfTexto(d) {
     "Nodos en la libreta: " + d.nodos + " (de los cuales por Internet/MQTT: " + d.porMqtt + ")",
     "Mensajes guardados: " + d.mensajes, "Muestras de telemetría: " + d.muestrasTele,
     "Eventos: " + d.eventos + " · Rutas guardadas: " + d.rutas, "Mosaicos de mapa guardados: " + d.mosaicosMapa, "",
-    "Almacenamiento usado: " + fmtKB(d.almacenamiento.total)];
+    "Almacenamiento chico (ajustes) usado: " + fmtKB(d.almacenamiento.total),
+    "Almacén grande (historial, IndexedDB): " + (d.almacenGrande ? (d.almacenGrande.usado != null ? fmtKB(d.almacenGrande.usado) + " usados de " + fmtKB(d.almacenGrande.cuota) + " disponibles (incluye mapas)" : "en uso") : "no disponible en este navegador: se usa el almacenamiento chico")];
   for (const [k, v] of Object.entries(d.almacenamiento.out)) L.push("   " + k + ": " + fmtKB(v));
   L.push("", "Servidores MQTT conectados: " + d.mqtt, "Conexión con el nodo: " + d.conexion,
     "Equipo: " + d.nucleos + " núcleos · " + d.memoriaGB + " GB de memoria", "Navegador: " + d.navegador);
@@ -3798,8 +4060,26 @@ function perfTexto(d) {
    mosaicos de mapa descargados (se vuelven a bajar) ni nada que esté guardado en el nodo. */
 const COPIA_VER = 1;
 function copiaClaves() { const k = []; for (let i = 0; i < localStorage.length; i++) { const x = localStorage.key(i); if (x && x.startsWith("meshportal:")) k.push(x); } return k.sort(); }
-function copiaArmar() {
+/* Lo del almacén grande se vuelve a poner en el mismo formato de texto que usaban las versiones
+   anteriores, así una copia hecha acá se puede restaurar también en un portal viejo. */
+async function copiaGrandes() {
+  const out = {};
+  await ALM.listo; if (!ALM.ok) return out;
+  for (const k of await almClaves("meshportal:")) {
+    if (k.includes("#") || !GRANDE.test(k)) continue;
+    try {
+      if (/:tele$/.test(k)) {
+        const cab = await almGet(k), tele = {}, tracks = {};
+        if (cab && cab.v === 2) for (const num of cab.nums || []) { const v = await almGet(k + "#" + num); if (!v) continue; if (v.cats) tele[num] = v.cats; if (v.track) tracks[num] = v.track; }
+        out[k] = JSON.stringify({ tele, tracks });
+      } else { const v = await almLeerLista(k); if (v) out[k] = JSON.stringify(v); }
+    } catch (e) {}
+  }
+  return out;
+}
+async function copiaArmar() {
   const datos = {}; for (const k of copiaClaves()) datos[k] = localStorage.getItem(k);
+  Object.assign(datos, await copiaGrandes());
   return { tipo: "copia-portal-lora-mesh", version: COPIA_VER, portal: PORTAL_VER, creada: new Date().toISOString(),
     origen: IS_DESK ? "aplicación de Windows" : IS_APP ? "aplicación de Android" : "navegador", claves: Object.keys(datos).length, datos };
 }
@@ -3810,8 +4090,8 @@ function copiaResumen(c) {
   }
   return { msgs, nodos, claves: Object.keys(c.datos || {}).length };
 }
-function copiaGuardar() {
-  const c = copiaArmar(), r = copiaResumen(c);
+async function copiaGuardar() {
+  const c = await copiaArmar(), r = copiaResumen(c);
   const nombre = "copia-portal-lora-mesh-" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "") + ".json";
   download(nombre, new Blob([JSON.stringify(c)], { type: "application/json" }));
   toast("Copia guardada: " + r.msgs + " mensajes, " + r.nodos + " nodos y " + r.claves + " grupos de ajustes", "ok");
@@ -3826,20 +4106,29 @@ async function copiaRestaurar(file) {
   const cuando = c.creada ? new Date(c.creada).toLocaleString("es-AR") : "fecha desconocida";
   if (!confirm("¿Restaurar esta copia?\n\nCreada: " + cuando + (c.origen ? " · desde " + c.origen : "") + "\nTrae " + r.msgs + " mensajes, " + r.nodos + " nodos y " + claves.length + " grupos de ajustes.\n\nReemplaza todo lo que el portal tiene guardado en este equipo. Lo que hay en el nodo no se toca. El portal se vuelve a abrir al terminar.")) return;
   try {
+    await ALM.listo;
+    restaurando = true; /* que no se guarde nada encima mientras se restaura */
     for (const k of copiaClaves()) localStorage.removeItem(k);
-    for (const k of claves) localStorage.setItem(k, c.datos[k]);
-  } catch (e) { toast("No entró todo en el almacenamiento de este equipo: " + (e.message || e), "err"); return; }
+    if (ALM.ok) await almBorrarPrefijo("meshportal:");
+    for (const k of claves) {
+      if (ALM.ok && GRANDE.test(k)) {
+        const v = JSON.parse(c.datos[k]);
+        if (/:tele$/.test(k)) await teleGuardarObjeto(k, v); else if (/:nodes$/.test(k)) await almTx("readwrite", (st) => st.put(v, k)); else await almGuardarLista(k, v, /:msgs$/.test(k) ? firmaMsg : firmaEv);
+      } else localStorage.setItem(k, c.datos[k]);
+    }
+  } catch (e) { restaurando = false; toast("No entró todo en el almacenamiento de este equipo: " + (e.message || e), "err"); return; }
   toast("Copia restaurada. Abriendo de nuevo…", "ok");
   setTimeout(() => location.reload(), 900);
 }
 function viewCopia(body) {
-  const c = copiaArmar(), r = copiaResumen(c);
-  const tam = new Blob([JSON.stringify(c)]).size;
+  /* contar lo guardado puede tardar con mucho historial: la pantalla se arma enseguida y el resumen llega después */
+  const resumen = el("b", {}, "Contando lo guardado…"), detalle = el("small", {}, "Incluye servidores MQTT, conexiones guardadas, favoritos, libro de guardia, parámetros de emergencia, mensajes programados, sonidos, zonas del mapa y telemetría.");
+  copiaArmar().then((c) => { const r = copiaResumen(c), tam = new Blob([JSON.stringify(c)]).size; resumen.textContent = r.msgs + " mensajes · " + r.nodos + " nodos"; detalle.textContent = r.claves + " grupos de ajustes · " + fmtKB(tam) + " en total. Incluye servidores MQTT, conexiones guardadas, favoritos, libro de guardia, parámetros de emergencia, mensajes programados, sonidos, zonas del mapa y telemetría."; }).catch(() => { resumen.textContent = "No se pudo contar lo guardado"; });
   const fin = el("input", { type: "file", accept: ".json,application/json", style: "display:none", onchange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) copiaRestaurar(f); } });
   body.append(el("header", { class: "ph" }, el("div", {}, el("h2", {}, "Copia de seguridad del portal"), el("small", { class: "muted" }, "Para pasar todo lo que guardó el portal a otro navegador, a otra PC o a la aplicación de Windows."))),
     el("div", { class: "form" },
       secH("Qué hay guardado en este equipo"),
-      el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, r.msgs + " mensajes · " + r.nodos + " nodos"), el("small", {}, r.claves + " grupos de ajustes · " + fmtKB(tam) + " en total. Incluye servidores MQTT, conexiones guardadas, favoritos, libro de guardia, parámetros de emergencia, mensajes programados, sonidos, zonas del mapa y telemetría."))),
+      el("div", { class: "row" }, el("div", { class: "rl" }, resumen, detalle)),
       secH("Guardar una copia"),
       actRow("Guardar copia", "Descarga un archivo .json con todo lo de arriba. Guardalo en un pendrive o en Drive.", el("button", { class: "btn", onclick: copiaGuardar }, "Guardar copia")),
       secH("Restaurar"),
@@ -3858,10 +4147,11 @@ function viewPerf(body) {
       el("div", { class: "perfhead " + (d.fps >= 50 ? "ok" : d.fps >= 30 ? "medio" : "malo") }, el("b", {}, d.fps + " cuadros por segundo"), el("span", {}, d.fps >= 50 ? "El portal va fluido en esta pantalla." : d.fps >= 30 ? "Se nota algo lento." : "Va lento: mirá los números de abajo.")),
       fila("Tiempo por cuadro (típico)", d.p50 + " ms", d.p50 > 33), fila("El 95 % de los cuadros bajo", d.p95 + " ms", d.p95 > 50), fila("Peor cuadro", d.peor + " ms"),
       fila("Apertura del portal", d.aperturaMs != null ? d.aperturaMs + " ms" : "sin dato", d.aperturaMs > 3000),
-      fila("Nodos en la libreta", d.nodos + (d.porMqtt ? " (" + d.porMqtt + " por Internet)" : ""), d.nodos > 2000),
-      fila("Mensajes guardados", String(d.mensajes), d.mensajes > 6000), fila("Muestras de telemetría", String(d.muestrasTele), d.muestrasTele > 40000),
+      fila("Nodos en la libreta", d.nodos + (d.porMqtt ? " (" + d.porMqtt + " por Internet)" : ""), d.nodos > 8000),
+      fila("Mensajes guardados", d.mensajes + " (tope " + MSG_MAX + ")", d.mensajes > MSG_MAX), fila("Muestras de telemetría", String(d.muestrasTele), d.muestrasTele > 600000),
       fila("Mosaicos de mapa guardados", String(d.mosaicosMapa)),
-      fila("Almacenamiento usado", fmtKB(d.almacenamiento.total), d.almacenamiento.total > 4e6),
+      fila("Historial guardado (almacén grande)", d.almacenGrande ? (d.almacenGrande.usado != null ? fmtKB(d.almacenGrande.usado) + " de " + fmtKB(d.almacenGrande.cuota) : "en uso") : "no disponible: se usa el chico", d.almacenGrande ? d.almacenGrande.cuota && d.almacenGrande.usado / d.almacenGrande.cuota > 0.8 : true),
+      fila("Ajustes guardados (almacenamiento chico)", fmtKB(d.almacenamiento.total), d.almacenamiento.total > 4e6),
       ...Object.entries(d.almacenamiento.out).map(([k, v]) => el("div", { class: "tprow sub" }, el("span", {}, k), el("b", {}, fmtKB(v)))),
       fila("Servidores MQTT conectados", d.mqtt), fila("Equipo", d.nucleos + " núcleos · " + d.memoriaGB + " GB"),
       el("div", { class: "chips" },
@@ -3874,12 +4164,13 @@ function viewPerf(body) {
       secH("Limpieza automática de la libreta de nodos"),
       el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Por qué sirve"), el("small", {}, "Con MQTT entran nodos de todo el país que no son de tu red. Cuantos más nodos hay, más tarda cada dibujo de pantalla. El portal los va soltando solo. Nunca borra tu nodo, los favoritos, los que te escribieron ni los que llegan por radio."))),
       actRow("Olvidar nodos de Internet sin señal hace", "Se sueltan los que llegaron por MQTT y no se escucharon en este tiempo.", num("keepDays", 1, 90, 1, "días")),
-      actRow("Tope de nodos en la libreta", "Si se pasa de este número, se sueltan primero los más viejos.", num("maxNodes", 200, 10000, 100, "nodos")),
+      actRow("Tope de nodos en la libreta", "Si se pasa de este número, se sueltan primero los más viejos que llegaron por Internet. El portal se probó fluido con 10.000.", num("maxNodes", 200, 20000, 100, "nodos")),
       actRow("Limpiar ahora", "Aplica la limpieza en este momento y te dice cuántos nodos soltó.", el("button", { class: "btn ghost", onclick: () => { const k = pruneNodes(true); toast(k ? "Se soltaron " + k + " nodos viejos" : "No había nodos viejos para soltar", k ? "ok" : ""); renderMain(); } }, "Limpiar ahora")),
       secH("Si sigue lento"),
       el("div", { class: "row" }, el("div", { class: "rl" }, el("b", {}, "Qué probar, en orden"), el("small", {}, "1) Cerrá las otras pestañas del navegador y volvé a medir. 2) Desconectá los servidores MQTT que no uses (Ajustes → Internet y MQTT): cada uno trae tráfico de toda la red. 3) En el mapa, apagá las capas que no mires (rastros, cobertura, vecinos). 4) Si el almacenamiento pasa de 4 MB, usá «Limpiar ahora» y, si hace falta, borrá los datos desde Administración y respaldo.")))));
 }
 window.__perf = { perfMedir, perfTexto, lsUse, pruneNodes, toast };
+window.__datos = { ALM, guardarAhora, saveTele, loadCache, almLeerLista, almGet, copiaArmar, evPersist, marcarTele: (num) => teleSucio.add(num), estado: () => ({ cacheLeido, evLeidos, msgs: S.msgs.length, eventos: S.events.length }) };
 function viewSound(body) {
   const c = sndCfg(), sw = (on, f) => el("label", { class: "sw" }, el("input", { type: "checkbox", checked: !!on, onchange: (e) => f(e.target.checked) }), el("span", {}));
   const btn = (t, f, cls) => el("button", { class: "btn " + (cls ?? "ghost"), onclick: f }, t);
@@ -3944,7 +4235,7 @@ function viewSystem(body) {
       actRow("Exportar telemetría y configuración", "Volcado completo en JSON: configuración, canales (sin claves), nodos, telemetría, rastros y waypoints.", el("button", { class: "btn ghost", onclick: () => exportDump() }, "Exportar JSON")),
       actRow("Imprimir / guardar chats en PDF", "Informe con todos los datos de cada mensaje, listo para imprimir o guardar como PDF.", el("button", { class: "btn ghost", onclick: () => openPrintDialog() }, "Abrir informe")),
       actRow("Exportar mensajes", "Descarga el historial guardado en este navegador (JSON).", el("button", { class: "btn ghost", onclick: () => download("mensajes-lora-mesh.json", new Blob([JSON.stringify(S.msgs, null, 1)], { type: "application/json" })) }, "Descargar")),
-      actRow("Borrar historial local", "Elimina mensajes y nodos guardados en este navegador.", el("button", { class: "btn ghost", onclick: () => { if (confirm("¿Borrar el historial guardado en esta computadora?\n\nSe pierden los mensajes, la telemetría y las novedades guardados acá. No se puede deshacer.")) { S.msgs = []; try { localStorage.removeItem(cacheKey("msgs")); localStorage.removeItem(cacheKey("nodes")); } catch (e) {} scheduleRefresh("all"); toast("Historial local borrado"); } } }, "Borrar")),
+      actRow("Borrar historial local", "Elimina mensajes y nodos guardados en este navegador.", el("button", { class: "btn ghost", onclick: () => { if (confirm("¿Borrar el historial guardado en esta computadora?\n\nSe pierden los mensajes, la telemetría y las novedades guardados acá. No se puede deshacer.")) { S.msgs = []; S.tele.clear(); S.tracks.clear(); S.events = []; teleSucio.clear(); try { for (const k of ["msgs", "nodes", "tele"]) localStorage.removeItem(cacheKey(k)); localStorage.removeItem(EV_KEY); } catch (e) {} almBorrarPrefijo(cacheKey("")).then(() => almBorrarPrefijo(EV_KEY)); lastSaveRev = -1; scheduleRefresh("all"); toast("Historial local borrado"); } } }, "Borrar")),
       secH("Zona peligrosa"),
       actRow("Restablecer la configuración", "Vuelve toda la configuración a los valores de fábrica pero conserva la identidad (claves) y la lista de nodos.", btn("Restablecer configuración", async () => { if (prompt("Escribí RESTABLECER para confirmar") === "RESTABLECER") { S.expectReboot = true; await sendAdmin("factoryResetConfig", 1); toast("Configuración restablecida"); } }, "danger")),
       actRow("Restablecer de fábrica (todo)", "Borra TODO: configuración, claves, canales y nodos. No se puede deshacer.", btn("Restablecer de fábrica", async () => { if (prompt("Escribí BORRAR TODO para confirmar") === "BORRAR TODO") { S.expectReboot = true; await sendAdmin("factoryResetDevice", 1); toast("Restablecido de fábrica"); } }, "danger"))), fi);
@@ -4254,7 +4545,11 @@ async function mqOpen(s, i) {
     cs.forEach((c, k) => c.connect(4000).then(() => { if (won) { c.close(); return; } won = true; cs.forEach((o) => o !== c && o.close()); c.url = cands[k]; res(c); }, () => { if (++fails === cs.length && !won) rej(new Error(s.url ? "No se pudo conectar por la dirección web ni por el puente local. Revisá la dirección, el usuario y la clave." : "Este servidor solo ofrece MQTT por TCP (el navegador no puede usarlo). Ejecutá el puente local (puente-mqtt.py) o tocá “Aplicar al nodo”.")); }));
   });
 }
-const mqAllowedFor = (s) => !!(s.enabled && (s.url || s.host) && (S.net.online !== false || (s.url && isLocalUrl(s.url))));
+/* Sin Internet se sigue conectando a un servidor de la red local. Antes eso valía solo si el
+   servidor estaba cargado como dirección completa (ws://…): cargado como servidor y puerto
+   (lo común, y la única forma para los que van por el puente), quedaba esperando Internet. */
+const mqEsLocal = (s) => !!((s.url && isLocalUrl(s.url)) || (!s.url && s.host && isLocalUrl("ws://" + s.host)));
+const mqAllowedFor = (s) => !!(s.enabled && (s.url || s.host) && (S.net.online !== false || mqEsLocal(s)));
 function mqCloseOne(i) { const r = S.mq.srv[i]; r.gen++; clearTimeout(r.timer); r.subs.clear(); if (r.client) { const c = r.client; r.client = null; c.close(); } }
 function mqClose() { S.mq.srv.forEach((_, i) => mqCloseOne(i)); S.mq.srv.forEach((r) => { r.st = "off"; r.err = ""; }); }
 function mqEnsure() { S.mq.cfg.servers.forEach((_, i) => mqEnsureOne(i)); scheduleRefresh("net"); }
@@ -5244,7 +5539,7 @@ if (IS_DESK && ESC().enEvento) {
   ESC().enEvento("parte", () => abrirParte());
 }
 window.__mesh = S;
-window.__ui = { setView, renderMain, startDemo };
+window.__ui = { setView, renderMain, startDemo, drawMap, upsertNode };
 window.__conn = { connectNet, makeNetTransport, testNet, diagNode };
 window.__pb = { NMesh, NConfig, NModule, NAdmin, NChannel, NPort, NApp, NClient, NLocal, create, toBinary, fromBinary, startDevice };
 

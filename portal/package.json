@@ -1,6 +1,6 @@
 {
   "name": "portal-lora-mesh",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Portal web de un solo archivo para manejar nodos de radio LoRa Mesh sin internet (OPEN SOURCE PARIZ).",
   "license": "GPL-3.0-or-later",
   "private": true,
@@ -20,7 +20,7 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@bufbuild/protobuf": "^2.16.0",
+    "@bufbuild/protobuf": "^2.17.0",
     "@meshtastic/core": "^2.6.7",
     "@meshtastic/transport-http": "^0.2.5",
     "@meshtastic/transport-web-bluetooth": "^0.1.5",

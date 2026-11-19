@@ -1,7 +1,7 @@
 import { build } from "esbuild";
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 const r = await build({
-  entryPoints: ["src/app.js"], bundle: true, minify: true, format: "iife", platform: "browser", write: false, target: "es2020",
+  entryPoints: ["src/app.js"], bundle: true, minify: process.env.SIN_MINIFICAR ? false : true, format: "iife", platform: "browser", write: false, target: "es2020",
   inject: ["./shims/process.js"], alias: { os: "./shims/os.js", path: "./shims/path.js", util: "./shims/util.js" }, logLevel: "warning",
 });
 let js = r.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");

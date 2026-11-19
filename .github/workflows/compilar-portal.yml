@@ -1,5 +1,7 @@
-# Comprueba que el portal compile y que el archivo resultante sea un portal válido.
-# No publica nada: solo avisa si un cambio rompió la compilación.
+# Comprueba que el portal compile y que el archivo resultante sea un portal válido, y lo prueba
+# en un navegador de verdad: todas las pantallas (PC y celular), una carga de 10.000 nodos y
+# 50.000 mensajes, el almacén grande del historial y la conexión con un nodo de prueba.
+# No publica nada: solo avisa si un cambio rompió algo.
 name: Compilar el portal
 
 on:
@@ -49,3 +51,45 @@ jobs:
           name: portal-lora-mesh
           path: portal/dist/portal-meshtastic.html
           retention-days: 14
+
+  probar:
+    name: Probar el portal en un navegador
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Compilar el portal
+        working-directory: portal
+        run: |
+          npm ci || npm install
+          node build.mjs
+
+      - name: Instalar el navegador de prueba
+        run: |
+          python -m pip install --quiet playwright==1.63.0
+          python -m playwright install --with-deps chromium
+
+      - name: Todas las pantallas, en PC y en celular
+        working-directory: portal
+        run: python pruebas/t_pantallas.py
+
+      - name: Conectado a un nodo de prueba por la red
+        working-directory: portal
+        run: python pruebas/t_conectado.py
+
+      - name: Historial grande guardado (IndexedDB), copia y restauración
+        working-directory: portal
+        run: python pruebas/t_almacen.py
+
+      - name: Carga de 10.000 nodos y 50.000 mensajes
+        working-directory: portal
+        run: python pruebas/t_carga.py

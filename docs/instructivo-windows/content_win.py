@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # Instructivo de la aplicación para Windows. Mismos tipos de bloque que los otros instructivos.
 # ("fig", imagen, epígrafe, [leyenda], [(x, y) de cada número rojo, en píxeles de la captura])
-VERSION = "1.11"
-FECHA = "3 de noviembre de 2026"
+VERSION = "1.12"
+FECHA = "18 de noviembre de 2026"
 CH = []
 def ch(title, *blocks): CH.append((title, list(blocks)))
 
@@ -34,8 +34,8 @@ ch("Antes de empezar",
    ["Permisos", "<b>No hace falta ser administrador</b>: se instala solo para tu usuario."]]),
  ("h3", "Qué archivo usar"),
  ("table", ["Archivo", "Para qué"], [
-   ["OPEN-SOURCE-PARIZ-Windows-1.11.0-instalador.exe", "<b>El recomendado.</b> Instala el programa con accesos directos en el escritorio y en el menú Inicio, y se puede desinstalar desde la configuración de Windows."],
-   ["OPEN-SOURCE-PARIZ-Windows-1.11.0-portable.zip", "La versión <b>portable</b>: no se instala. Se descomprime en cualquier carpeta o en un pendrive y se abre <b>OPEN SOURCE PARIZ.exe</b>. Útil en PCs donde no se puede instalar nada."]]),
+   ["OPEN-SOURCE-PARIZ-Windows-1.12.0-instalador.exe", "<b>El recomendado.</b> Instala el programa con accesos directos en el escritorio y en el menú Inicio, y se puede desinstalar desde la configuración de Windows."],
+   ["OPEN-SOURCE-PARIZ-Windows-1.12.0-portable.zip", "La versión <b>portable</b>: no se instala. Se descomprime en cualquier carpeta o en un pendrive y se abre <b>OPEN SOURCE PARIZ.exe</b>. Útil en PCs donde no se puede instalar nada."]]),
  ("p", "Los dos archivos se entregan junto con este instructivo. También están en la página del proyecto en GitHub: <b>github.com/parizeliseo/RED-LORA-MESH</b> → pestaña <b>Actions</b> → <b>Aplicación de Windows</b> → la última ejecución con tilde verde → <b>Artifacts</b> → <b>OPEN-SOURCE-PARIZ-Windows</b> (GitHub pide iniciar sesión para bajarlo y lo entrega dentro de un .zip)."),
  ("h3", "El controlador del chip USB"),
  ("p", "Para que Windows vea el nodo por cable tiene que reconocer el chip USB de la placa. Windows 10 y 11 suelen instalarlo solos la primera vez que enchufás el nodo (con Internet). Si al enchufarlo no aparece ningún puerto <b>COM</b> nuevo, hay que instalarlo a mano:"),
@@ -49,7 +49,7 @@ ch("Antes de empezar",
 ch("Instalar paso a paso",
  ("p", "La instalación lleva menos de un minuto. Las pantallas del instalador son de Windows y pueden variar un poco según la versión; los nombres de los botones son los que se ven en un Windows en castellano."),
  ("steps", [
-   "Hacé doble clic en <b>OPEN-SOURCE-PARIZ-Windows-1.11.0-instalador.exe</b> (si lo bajaste de GitHub, primero descomprimí el .zip).",
+   "Hacé doble clic en <b>OPEN-SOURCE-PARIZ-Windows-1.12.0-instalador.exe</b> (si lo bajaste de GitHub, primero descomprimí el .zip).",
    "Windows muestra un cartel azul <b>«Windows protegió su PC»</b>. Aparece porque el programa no está firmado con un certificado comercial (que cuesta dinero cada año), no porque tenga algo raro. Tocá <b>«Más información»</b> y después <b>«Ejecutar de todas formas»</b>.",
    "Se abre el instalador de <b>OPEN SOURCE PARIZ</b> en castellano. Leé la licencia (GPL-3.0, la del software libre) y tocá <b>«Acepto»</b>.",
    "El instalador pregunta <b>«¿Para quién se instalará esta aplicación?»</b>. Dejá <b>«Solo para mí»</b>: no pide permisos de administrador. «Cualquiera que utilice este ordenador (todos los usuarios)» sí los pide. Tocá <b>«Siguiente»</b>.",
@@ -59,7 +59,7 @@ ch("Instalar paso a paso",
  ("warn", "<b>Si el antivirus lo bloquea o lo pone en cuarentena:</b> pasa a veces con programas nuevos sin firma comercial. Usá solo el instalador que recibiste del proyecto o el de GitHub Actions y, si estás seguro del origen, restauralo desde el antivirus y agregalo como excepción. Si la PC es de una institución, consultá antes con quien la administra."),
  ("h3", "Usar la versión portable (sin instalar)"),
  ("steps", [
-   "Clic derecho en <b>OPEN-SOURCE-PARIZ-Windows-1.11.0-portable.zip</b> → <b>«Extraer todo…»</b> → elegí la carpeta (puede ser un pendrive) → <b>«Extraer»</b>.",
+   "Clic derecho en <b>OPEN-SOURCE-PARIZ-Windows-1.12.0-portable.zip</b> → <b>«Extraer todo…»</b> → elegí la carpeta (puede ser un pendrive) → <b>«Extraer»</b>.",
    "Entrá en la carpeta y hacé doble clic en <b>OPEN SOURCE PARIZ.exe</b>. Si aparece «Windows protegió su PC», igual que arriba: <b>«Más información» → «Ejecutar de todas formas»</b>.",
    "No muevas el .exe fuera de su carpeta: necesita los demás archivos que están al lado."]),
  ("note", "La versión instalada y la portable guardan sus datos en el mismo lugar de la PC (ver capítulo «Actualizar, desinstalar y dónde quedan los datos»). Si usás las dos en la misma computadora, ven los mismos mensajes y ajustes. Abrí una sola por vez: si ya hay una abierta, la segunda solo trae al frente la ventana de la primera."),
@@ -73,7 +73,7 @@ ch("Abrir el programa por primera vez",
    "<b>Formas de conectar:</b> USB (cable), Bluetooth o Red (WiFi / LAN).",
    "<b>Agregar conexión…:</b> para guardar un nodo de red con nombre y dirección.",
    "<b>Ver modo demo (sin nodo):</b> carga una red de ejemplo para conocer el programa sin tener un nodo.",
-   "<b>Versión del software:</b> confirma qué versión estás usando: <i>Portal: 1.11 (Windows)</i> y la fecha."],
+   "<b>Versión del software:</b> confirma qué versión estás usando: <i>Portal: 1.12 (Windows)</i> y la fecha."],
   [(378, 24), (238, 137), (598, 393), (723, 450), (700, 711), (210, 797)]),
  ("tip", "<b>Para aprender sin nodo:</b> tocá <b>Ver modo demo (sin nodo)</b>. El programa se llena con cinco nodos, mensajes y telemetría de ejemplo, y todo se puede tocar sin riesgo: nada sale por radio. Las capturas de este instructivo están hechas en modo demo. Para salir del modo demo, tocá <b>Desconectar</b> al final del menú lateral."),
  ("p", "Si la ventana te queda chica o grande, cambiale el tamaño desde los bordes o hacé doble clic en la barra de título para maximizarla: el programa recuerda el tamaño y el lugar para la próxima vez. Con <b>Ctrl +</b> y <b>Ctrl −</b> agrandás o achicás el contenido, y <b>Ctrl+0</b> lo vuelve al tamaño normal."),
@@ -441,6 +441,13 @@ ch("Ajustes del programa",
    ["Datos del portal", "Exportar telemetría y configuración, exportar mensajes y borrar el historial guardado en la PC."]]),
  ("h3", "Rendimiento y limpieza"),
  ("p", "Si el programa se pone lento (casi siempre por miles de nodos que entran por MQTT), <b>Medir ahora</b> muestra los cuadros por segundo, los nodos guardados y el espacio usado, y <b>Limpiar ahora</b> suelta los nodos de Internet que ya no se escuchan. Nunca borra tu nodo, los favoritos, los que te escribieron ni los que llegan por radio."),
+ ("h3", "Cuánto guarda el programa"),
+ ("table", ["Qué", "Hasta"], [
+   ["Mensajes", "50.000 (los más viejos se sueltan de a 2000)."],
+   ["Nodos en la libreta", "5000 de fábrica; se puede subir hasta 20.000 en Rendimiento y limpieza. Se probó fluido con 10.000."],
+   ["Telemetría por nodo", "2000 muestras por tipo de dato en los nodos de radio (unas seis semanas con el envío cada 30 minutos); 300 en los que llegan por Internet."],
+   ["Novedades del libro de guardia", "20.000 registros."]]),
+ ("note", "Desde la versión 1.12 el historial va al <b>almacén grande</b> del programa, que deja usar cientos de MB. Antes compartía un espacio de unos 5 MB con los ajustes y había que recortarlo. Al abrir la versión nueva por primera vez, lo que estaba guardado se pasa solo."),
  ("h3", "Ubicación de esta PC"),
  ("p", "Si tu nodo no tiene GPS, el programa le puede pasar la ubicación de la computadora, que el nodo comparte con la red. Solo sirve si Windows sabe dónde está la PC (<b>Configuración → Privacidad y seguridad → Ubicación</b> activada); en una PC de escritorio sin GPS la ubicación suele ser aproximada o no estar disponible. Para un lugar fijo es mejor cargar la posición fija en el propio nodo (Configuración del dispositivo → Posición)."),
 )
@@ -465,7 +472,7 @@ ch("Copia de seguridad y pasar los datos",
 
 ch("Actualizar, desinstalar y dónde quedan los datos",
  ("h3", "Qué versión tengo"),
- ("p", "En el menú lateral, <b>Versión del software</b> dice <i>Portal: 1.11 (Windows)</i> y la fecha. También en <b>Ayuda → Acerca de OPEN SOURCE PARIZ</b>."),
+ ("p", "En el menú lateral, <b>Versión del software</b> dice <i>Portal: 1.12 (Windows)</i> y la fecha. También en <b>Ayuda → Acerca de OPEN SOURCE PARIZ</b>."),
  ("h3", "Actualizar a una versión nueva"),
  ("steps", [
    "Cerrá el programa del todo: clic derecho en el ícono de la bandeja → <b>Salir</b>.",

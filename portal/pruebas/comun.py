@@ -29,8 +29,9 @@ def nodo_de_prueba(puerto=8111, por_seg=2, libreta=40):
     """Arma el nodo de mentira con esbuild (usa los protobuf del portal) y lo arranca."""
     import subprocess, tempfile, time, urllib.request
     raiz = os.path.dirname(os.path.dirname(NODO_FALSO)); salida = os.path.join(tempfile.gettempdir(), "nodo_falso_portal.cjs")
-    esb = os.path.join(raiz, "node_modules", "esbuild", "bin", "esbuild")
-    subprocess.run(["node", esb, NODO_FALSO, "--bundle", "--platform=node", "--format=cjs", "--outfile=" + salida, "--log-level=warning"], check=True, cwd=raiz)
+    # la API de esbuild, no su ejecutable: según la instalación, bin/esbuild es un programa nativo y no se abre con node
+    armar = "require('esbuild').buildSync({entryPoints:[process.argv[1]],bundle:true,platform:'node',format:'cjs',outfile:process.argv[2],logLevel:'warning'})"
+    subprocess.run(["node", "-e", armar, NODO_FALSO, salida], check=True, cwd=raiz)
     proc = subprocess.Popen(["node", salida, str(puerto), str(por_seg), str(libreta)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for _ in range(50):
         try: urllib.request.urlopen("http://127.0.0.1:%d/estado-prueba" % puerto, timeout=1); return proc
